@@ -1,0 +1,76 @@
+#include <Arduino.h>
+#include "config.h"
+#include "display.h"
+
+Display::Display() {
+    oled = new Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+}
+
+bool Display::begin() {
+    return oled->begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+}
+
+void Display::splash() {
+    oled->clearDisplay();
+    oled->setTextSize(1);
+    oled->setTextColor(SSD1306_WHITE);
+    oled->setCursor(16, 20);
+    oled->println("SmartWatch");
+    oled->setCursor(28, 35);
+    oled->println("v0.2 BLE");
+    oled->display();
+}
+
+void Display::imuData(float ax, float ay, float az, float temp) {
+    oled->clearDisplay();
+
+    oled->setCursor(16, 0);
+    oled->println("MPU6050 DATA");
+    oled->drawFastHLine(0, 10, SCREEN_WIDTH, SSD1306_WHITE);
+
+    char buf[20];
+    oled->setCursor(0, 16);
+    snprintf(buf, sizeof(buf), "X: %+06.2f g", ax);
+    oled->println(buf);
+
+    oled->setCursor(0, 26);
+    snprintf(buf, sizeof(buf), "Y: %+06.2f g", ay);
+    oled->println(buf);
+
+    oled->setCursor(0, 36);
+    snprintf(buf, sizeof(buf), "Z: %+06.2f g", az);
+    oled->println(buf);
+
+    oled->setCursor(0, 50);
+    oled->print("Temp: ");
+    oled->print(temp, 1);
+    oled->print(" C");
+    oled->display();
+}
+
+void Display::btStatus(const char* msg) {
+    oled->clearDisplay();
+    oled->setTextSize(1);
+    oled->setTextColor(SSD1306_WHITE);
+
+    if (strcmp(msg, "waiting") == 0) {
+        oled->setCursor(8, 20);
+        oled->println("Bluetooth");
+        oled->setCursor(4, 30);
+        oled->println("Esperando...");
+    } else if (strcmp(msg, "connected") == 0) {
+        oled->setCursor(8, 20);
+        oled->println("BT Conectado!");
+        oled->setCursor(0, 35);
+        oled->println("App lista");
+    } else {
+        oled->setCursor(0, 0);
+        oled->println(msg);
+    }
+    oled->display();
+}
+
+void Display::clear() {
+    oled->clearDisplay();
+    oled->display();
+}

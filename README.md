@@ -28,9 +28,10 @@ pio device monitor
 ## Esquema de conexión
 
 ```
-ESP32           SSD1306    MPU6050
+ESP32           SSD1306    MPU6050  Button
 GPIO21 (SDA) ── SDA ────── SDA
 GPIO22 (SCL) ── SCL ────── SCL
+GPIO23 ────────────────────────────── PIN
 3.3V ────────── VCC ────── VCC
-GND ─────────── GND ────── GND
+GND ─────────── GND ────── GND ────── GND
 ```

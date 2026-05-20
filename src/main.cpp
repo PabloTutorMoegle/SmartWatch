@@ -1,97 +1,107 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_SSD1306.h>
+#include "config.h"
+#include "mpu.h"
+#include "display.h"
+#include "ble_smartwatch.h"
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define MPU_ADDR 0x68
+MPU mpu;
+Display display;
+SmartWatchBLE ble;
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+enum Screen { SCR_OFF, SCR_IMU, SCR_BT };
+Screen screen = SCR_BT;
 
-int16_t ax, ay, az, gx, gy, gz, temp_raw;
+int lastBtn = HIGH;
+unsigned long timeout = 0;
+unsigned long lastBleNotify = 0;
+unsigned long lastScreenUpdate = 0;
+unsigned long lastMpuRead = 0;
+
+void onCommand(uint8_t cmd) {
+    switch (cmd) {
+        case CMD_SHOW_IMU:
+            screen = SCR_IMU;
+            timeout = millis() + 5000;
+            break;
+        case CMD_SCREEN_OFF:
+            screen = SCR_OFF;
+            break;
+    }
+}
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("SmartWatch v0.1");
+    Serial.println("SmartWatch v0.2 BLE");
 
-    Wire.begin(21, 22);
+    Wire.begin(I2C_SDA, I2C_SCL);
 
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    if (!display.begin()) {
         Serial.println("SSD1306 no encontrado");
         while (true) delay(10);
     }
-    Serial.println("SSD1306 listo");
 
-    Wire.beginTransmission(MPU_ADDR);
-    Wire.write(0x6B);
-    Wire.write(0);
-    if (Wire.endTransmission(true) != 0) {
-        Serial.println("MPU6050 no responde en 0x68");
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.println("MPU6050 NO");
-        display.println("DETECTADO");
-        display.display();
-        while (true) delay(10);
+    if (!mpu.begin()) {
+        Serial.println("MPU6050 no responde");
+        display.btStatus("MPU6050 NO");
+        delay(2000);
     }
-    Serial.println("MPU6050 listo");
 
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-}
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    display.splash();
+    delay(1500);
 
-void leer_mpu() {
-    Wire.beginTransmission(MPU_ADDR);
-    Wire.write(0x3B);
-    Wire.endTransmission(false);
-    Wire.requestFrom(MPU_ADDR, 14, true);
-
-    ax = Wire.read() << 8 | Wire.read();
-    ay = Wire.read() << 8 | Wire.read();
-    az = Wire.read() << 8 | Wire.read();
-    temp_raw = Wire.read() << 8 | Wire.read();
-    gx = Wire.read() << 8 | Wire.read();
-    gy = Wire.read() << 8 | Wire.read();
-    gz = Wire.read() << 8 | Wire.read();
-}
-
-void printScreen(int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, int16_t temp_raw) {
-    float ax_g = ax / 16384.0;
-    float ay_g = ay / 16384.0;
-    float az_g = az / 16384.0;
-    float celsius = (temp_raw / 340.0) + 17.5;
-    
-    display.clearDisplay();
-
-    display.setCursor(16, 0);
-    display.println("MPU6050 DATA");
-    display.drawFastHLine(0, 10, SCREEN_WIDTH, SSD1306_WHITE);
-
-    char buf[20];
-    display.setCursor(0, 16);
-    snprintf(buf, sizeof(buf), "X: %+06.2f g", ax_g);
-    display.println(buf);
-
-    display.setCursor(0, 26);
-    snprintf(buf, sizeof(buf), "Y: %+06.2f g", ay_g);
-    display.println(buf);
-
-    display.setCursor(0, 36);
-    snprintf(buf, sizeof(buf), "Z: %+06.2f g", az_g);
-    display.println(buf);
-
-    display.setCursor(0, 50);
-    display.print("Temp: ");
-    display.print(celsius, 1);
-    display.print(" C");
-
-    display.display();
+    ble.begin();
+    ble.onCommand(onCommand);
+    display.btStatus("waiting");
 }
 
 void loop() {
-    leer_mpu();
+    unsigned long now = millis();
 
-    printScreen(ax, ay, az, gx, gy, gz, temp_raw);
+    if (now - lastMpuRead >= 50) {
+        lastMpuRead = now;
+        mpu.read();
+    }
 
-    delay(100);
+    int btn = digitalRead(BUTTON_PIN);
+    if (lastBtn == HIGH && btn == LOW) {
+        screen = SCR_IMU;
+        timeout = now + 5000;
+        ble.sendButton("PRESSED");
+    }
+    lastBtn = btn;
+
+    if (ble.connected()) {
+        if (now - lastBleNotify >= 500) {
+            lastBleNotify = now;
+            ble.sendIMU(mpu.ax, mpu.ay, mpu.az, mpu.gx, mpu.gy, mpu.gz);
+            ble.sendTemp(mpu.celsius);
+        }
+    }
+
+    if (now - lastScreenUpdate >= 200) {
+        lastScreenUpdate = now;
+
+        if (screen == SCR_IMU && now < timeout) {
+            display.imuData(mpu.ax_g, mpu.ay_g, mpu.az_g, mpu.celsius);
+        } else if (screen == SCR_IMU) {
+            screen = ble.connected() ? SCR_BT : SCR_OFF;
+        }
+
+        if (screen == SCR_BT) {
+            display.btStatus(ble.connected() ? "connected" : "waiting");
+        }
+
+        if (screen == SCR_OFF) {
+            if (mpu.az_g > 0.8) {
+                screen = SCR_IMU;
+                timeout = now + 5000;
+            } else {
+                display.clear();
+            }
+        }
+    }
+
+    delay(20);
 }
