@@ -18,6 +18,8 @@ unsigned long lastBleNotify = 0;
 unsigned long lastScreenUpdate = 0;
 unsigned long lastMpuRead = 0;
 
+unsigned long tDiag = 0;
+
 void onCommand(uint8_t cmd) {
     switch (cmd) {
         case CMD_SHOW_IMU:
@@ -66,11 +68,25 @@ void loop() {
 
     int btn = digitalRead(BUTTON_PIN);
     if (lastBtn == HIGH && btn == LOW) {
+        Serial.print("Boton PRESIONADO (GPIO");
+        Serial.print(BUTTON_PIN);
+        Serial.println(")");
         screen = SCR_IMU;
-        timeout = now + 5000;
-        ble.sendButton("PRESSED");
+        timeout = millis() + 5000;
+    } else if (lastBtn == LOW && btn == HIGH) {
+        Serial.println("Boton LIBERADO");
     }
     lastBtn = btn;
+
+    if (now - tDiag >= 3000) {
+        tDiag = now;
+        Serial.print("GPIO");
+        Serial.print(BUTTON_PIN);
+        Serial.print(" = ");
+        Serial.print(btn);
+        Serial.print("  |  az_g = ");
+        Serial.println(mpu.az_g, 3);
+    }
 
     if (ble.connected()) {
         if (now - lastBleNotify >= 500) {
@@ -94,7 +110,7 @@ void loop() {
         }
 
         if (screen == SCR_OFF) {
-            if (mpu.az_g > 0.8) {
+            if (mpu.az_g > 0.85f) {
                 screen = SCR_IMU;
                 timeout = now + 5000;
             } else {

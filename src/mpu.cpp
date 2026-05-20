@@ -13,8 +13,18 @@ bool MPU::begin() {
 void MPU::read() {
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(0x3B);
-    Wire.endTransmission(false);
-    Wire.requestFrom((uint8_t)MPU_ADDR, (size_t)14, true);
+    if (Wire.endTransmission(false) != 0) {
+        Wire.end();
+        Wire.begin(I2C_SDA, I2C_SCL);
+        return;
+    }
+
+    uint8_t count = Wire.requestFrom((uint8_t)MPU_ADDR, (size_t)14, true);
+    if (count < 14) {
+        Wire.end();
+        Wire.begin(I2C_SDA, I2C_SCL);
+        return;
+    }
 
     ax = Wire.read() << 8 | Wire.read();
     ay = Wire.read() << 8 | Wire.read();
