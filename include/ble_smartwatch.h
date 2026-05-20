@@ -13,7 +13,9 @@ public:
     void sendTemp(float celsius);
     void sendButton(const char* state);
     bool connected();
-    void onCommand(std::function<void(uint8_t)> cb);
+    void onCommand(std::function<void(uint8_t, uint8_t*, size_t)> cb);
+    void onTimeReceived(std::function<void(uint8_t, uint8_t, uint8_t)> cb);
+    void setTimeValue(uint8_t h, uint8_t m, uint8_t s);
 
 private:
     BLEServer* server = nullptr;
@@ -22,8 +24,10 @@ private:
     BLECharacteristic* charTemp = nullptr;
     BLECharacteristic* charButton = nullptr;
     BLECharacteristic* charCommand = nullptr;
+    BLECharacteristic* charTime = nullptr;
     bool deviceConnected = false;
-    std::function<void(uint8_t)> cmdCallback;
+    std::function<void(uint8_t, uint8_t*, size_t)> cmdCallback;
+    std::function<void(uint8_t, uint8_t, uint8_t)> timeCallback;
 
     class ServerHandler : public BLEServerCallbacks {
     public:
@@ -33,6 +37,12 @@ private:
     };
 
     class CommandHandler : public BLECharacteristicCallbacks {
+    public:
+        SmartWatchBLE* parent;
+        void onWrite(BLECharacteristic* c) override;
+    };
+
+    class TimeHandler : public BLECharacteristicCallbacks {
     public:
         SmartWatchBLE* parent;
         void onWrite(BLECharacteristic* c) override;

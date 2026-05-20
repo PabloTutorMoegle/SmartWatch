@@ -9,6 +9,7 @@ public:
     bool begin();
     void splash();
     void imuData(float ax, float ay, float az, float temp);
+    void showTime(uint8_t h, uint8_t m, uint8_t s, bool showColon);
     void btStatus(const char* msg);
     void clear();
 
