@@ -110,16 +110,6 @@ void loop() {
     }
     lastBtn = btn;
 
-    if (now - tDiag >= 3000) {
-        tDiag = now;
-        Serial.print("GPIO");
-        Serial.print(BUTTON_PIN);
-        Serial.print(" = ");
-        Serial.print(btn);
-        Serial.print("  |  az_g = ");
-        Serial.println(mpu.az_g, 3);
-    }
-
     if (ble.connected()) {
         if (now - lastBleNotify >= 500) {
             lastBleNotify = now;
