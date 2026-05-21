@@ -22,7 +22,7 @@ Se instalan automáticamente al compilar con PlatformIO.
 
 ```bash
 pio run -t upload
-pio device monitor
+pio device monitor  #ver monitor serial para ver log y prints
 ```
 
 ## Esquema de conexión

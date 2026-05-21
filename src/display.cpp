@@ -68,6 +68,60 @@ void Display::showTime(uint8_t h, uint8_t m, uint8_t s, bool showColon) {
     oled->display();
 }
 
+void Display::showSteps(uint32_t steps) {
+    oled->clearDisplay();
+    oled->setTextSize(1);
+    oled->setCursor(20, 0);
+    oled->println("CONTADOR");
+    oled->drawFastHLine(0, 10, SCREEN_WIDTH, SSD1306_WHITE);
+
+    oled->setTextSize(3);
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%lu", steps);
+
+    int16_t x1, y1;
+    uint16_t w, ht;
+    oled->getTextBounds(buf, 0, 0, &x1, &y1, &w, &ht);
+    oled->setCursor((SCREEN_WIDTH - w) / 2, (SCREEN_HEIGHT - ht) / 2 + 8);
+    oled->print(buf);
+
+    oled->setTextSize(1);
+    oled->setCursor(30, 54);
+    oled->print("pasos");
+    oled->display();
+}
+
+void Display::showHome(uint8_t h, uint8_t m, uint8_t s, bool showColon, float temp, uint32_t steps) {
+    oled->clearDisplay();
+    oled->setTextSize(1);
+
+    char buf[16];
+
+    snprintf(buf, sizeof(buf), "%lu p", steps);
+    oled->setCursor(0, 0);
+    oled->print(buf);
+
+    snprintf(buf, sizeof(buf), "%.1fC", temp);
+    int16_t x1, y1;
+    uint16_t w, ht;
+    oled->getTextBounds(buf, 0, 0, &x1, &y1, &w, &ht);
+    oled->setCursor(SCREEN_WIDTH - w - 1, 0);
+    oled->print(buf);
+
+    oled->drawFastHLine(0, 10, SCREEN_WIDTH, SSD1306_WHITE);
+
+    oled->setTextSize(2);
+    snprintf(buf, sizeof(buf), "%02u%c%02u%c%02u",
+             h, showColon ? ':' : ' ',
+             m, showColon ? ':' : ' ',
+             s);
+    oled->getTextBounds(buf, 0, 0, &x1, &y1, &w, &ht);
+    oled->setCursor((SCREEN_WIDTH - w) / 2, (SCREEN_HEIGHT - ht) / 2 + 6);
+    oled->print(buf);
+
+    oled->display();
+}
+
 void Display::btStatus(const char* msg) {
     oled->clearDisplay();
     oled->setTextSize(1);
