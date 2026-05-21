@@ -38,4 +38,32 @@ void MPU::read() {
     ay_g = ay / 16384.0f;
     az_g = az / 16384.0f;
     celsius = (temp_raw / 340.0f) + 17.5f;
+
+    updateStepCount();
+}
+
+void MPU::updateStepCount() {
+    unsigned long now = millis();
+    if (now - lastStepTime < 250) return;
+
+    float mag = sqrt(ax_g * ax_g + ay_g * ay_g + az_g * az_g);
+
+    if (mag > 1.15f && !stepDetected) {
+        stepDetected = true;
+    }
+
+    if (stepDetected && mag < 0.85f) {
+        stepCount++;
+        stepDetected = false;
+        lastStepTime = now;
+    }
+}
+
+void MPU::resetSteps() {
+    stepCount = 0;
+    stepDetected = false;
+}
+
+uint32_t MPU::getStepCount() const {
+    return stepCount;
 }

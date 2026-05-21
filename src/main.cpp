@@ -9,8 +9,8 @@ MPU mpu;
 Display display;
 SmartWatchBLE ble;
 
-enum Screen { SCR_OFF, SCR_IMU, SCR_BT, SCR_TIME };
-Screen screen = SCR_BT;
+enum Screen { SCR_OFF, SCR_HOME, SCR_IMU, SCR_STEPS, SCR_TIME };
+Screen screen = SCR_HOME;
 
 int lastBtn = HIGH;
 unsigned long timeout = 0;
@@ -35,6 +35,7 @@ void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
                 ble.setTimeValue(hours, minutes, seconds);
             }
             screen = SCR_TIME;
+            timeout = millis() + 7000;
             break;
         case CMD_SHOW_IMU:
             screen = SCR_IMU;
@@ -42,6 +43,13 @@ void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
             break;
         case CMD_SCREEN_OFF:
             screen = SCR_OFF;
+            break;
+        case CMD_SHOW_STEPS:
+            screen = SCR_STEPS;
+            timeout = millis() + 7000;
+            break;
+        case CMD_RESET_STEPS:
+            mpu.resetSteps();
             break;
     }
 }
@@ -75,10 +83,7 @@ void setup() {
         seconds = s;
         lastTimeTick = millis();
         ble.setTimeValue(hours, minutes, seconds);
-        screen = SCR_TIME;
-        timeout = millis() + 7000;
     });
-    display.btStatus("waiting");
     timeout = millis() + 7000;
 }
 
@@ -92,13 +97,16 @@ void loop() {
 
     int btn = digitalRead(BUTTON_PIN);
     if (lastBtn == HIGH && btn == LOW) {
-        Serial.print("Boton PRESIONADO (GPIO");
-        Serial.print(BUTTON_PIN);
-        Serial.println(")");
-        screen = SCR_IMU;
+        if (screen == SCR_HOME) {
+            screen = SCR_IMU;
+        } else if (screen == SCR_IMU) {
+            screen = SCR_STEPS;
+        } else if (screen == SCR_STEPS) {
+            screen = SCR_TIME;
+        } else {
+            screen = SCR_HOME;
+        }
         timeout = millis() + 7000;
-    } else if (lastBtn == LOW && btn == HIGH) {
-        Serial.println("Boton LIBERADO");
     }
     lastBtn = btn;
 
@@ -138,26 +146,20 @@ void loop() {
         lastScreenUpdate = now;
 
         // --- Render / transition based on current screen ---
+        if (screen == SCR_HOME) {
+            display.showHome(hours, minutes, seconds, seconds % 2 == 0, mpu.celsius, mpu.getStepCount());
+        }
+
         if (screen == SCR_IMU) {
             display.imuData(mpu.ax_g, mpu.ay_g, mpu.az_g, mpu.celsius);
         }
 
-        if (screen == SCR_TIME) {
-            if (ble.connected()) {
-                display.showTime(hours, minutes, seconds, seconds % 2 == 0);
-            } else {
-                screen = SCR_BT;
-                timeout = now + 7000;
-            }
+        if (screen == SCR_STEPS) {
+            display.showSteps(mpu.getStepCount());
         }
 
-        if (screen == SCR_BT) {
-            if (ble.connected()) {
-                screen = SCR_TIME;
-                timeout = now + 7000;
-            } else {
-                display.btStatus("waiting");
-            }
+        if (screen == SCR_TIME) {
+            display.showTime(hours, minutes, seconds, seconds % 2 == 0);
         }
 
         if (screen == SCR_OFF) {
@@ -174,7 +176,7 @@ void loop() {
     {
         bool currentWake = (mpu.az_g > 0.95f);
         if (screen == SCR_OFF && currentWake && !lastWakeState) {
-            screen = ble.connected() ? SCR_TIME : SCR_IMU;
+            screen = SCR_HOME;
             timeout = millis() + 7000;
         }
         lastWakeState = currentWake;
