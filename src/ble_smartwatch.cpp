@@ -15,7 +15,14 @@ void SmartWatchBLE::ServerHandler::onDisconnect(BLEServer* s) {
 void SmartWatchBLE::CommandHandler::onWrite(BLECharacteristic* c) {
     std::string value = c->getValue();
     if (value.length() > 0 && parent->cmdCallback) {
-        parent->cmdCallback((uint8_t)value[0]);
+        parent->cmdCallback((uint8_t)value[0], (uint8_t*)value.data(), value.length());
+    }
+}
+
+void SmartWatchBLE::TimeHandler::onWrite(BLECharacteristic* c) {
+    std::string value = c->getValue();
+    if (value.length() >= 3 && parent->timeCallback) {
+        parent->timeCallback((uint8_t)value[0], (uint8_t)value[1], (uint8_t)value[2]);
     }
 }
 
@@ -54,6 +61,15 @@ void SmartWatchBLE::begin() {
     CommandHandler* ch = new CommandHandler();
     ch->parent = this;
     charCommand->setCallbacks(ch);
+
+    charTime = service->createCharacteristic(
+        CHAR_TIME_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    charTime->addDescriptor(new BLE2902());
+    TimeHandler* th = new TimeHandler();
+    th->parent = this;
+    charTime->setCallbacks(th);
 
     service->start();
 
@@ -94,6 +110,17 @@ bool SmartWatchBLE::connected() {
     return deviceConnected;
 }
 
-void SmartWatchBLE::onCommand(std::function<void(uint8_t)> cb) {
+void SmartWatchBLE::onCommand(std::function<void(uint8_t, uint8_t*, size_t)> cb) {
     cmdCallback = cb;
+}
+
+void SmartWatchBLE::onTimeReceived(std::function<void(uint8_t, uint8_t, uint8_t)> cb) {
+    timeCallback = cb;
+}
+
+void SmartWatchBLE::setTimeValue(uint8_t h, uint8_t m, uint8_t s) {
+    if (!charTime) return;
+    uint8_t buf[3] = { h, m, s };
+    charTime->setValue(buf, 3);
+    charTime->notify();
 }

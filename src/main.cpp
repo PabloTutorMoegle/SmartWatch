@@ -9,7 +9,7 @@ MPU mpu;
 Display display;
 SmartWatchBLE ble;
 
-enum Screen { SCR_OFF, SCR_IMU, SCR_BT };
+enum Screen { SCR_OFF, SCR_IMU, SCR_BT, SCR_TIME };
 Screen screen = SCR_BT;
 
 int lastBtn = HIGH;
@@ -18,13 +18,27 @@ unsigned long lastBleNotify = 0;
 unsigned long lastScreenUpdate = 0;
 unsigned long lastMpuRead = 0;
 
+uint8_t hours = 0, minutes = 0, seconds = 0;
+unsigned long lastTimeTick = 0;
+
+bool lastWakeState = false;
 unsigned long tDiag = 0;
 
-void onCommand(uint8_t cmd) {
+void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
     switch (cmd) {
+        case CMD_SHOW_TIME:
+            if (len >= 4) {
+                hours = data[1];
+                minutes = data[2];
+                seconds = data[3];
+                lastTimeTick = millis();
+                ble.setTimeValue(hours, minutes, seconds);
+            }
+            screen = SCR_TIME;
+            break;
         case CMD_SHOW_IMU:
             screen = SCR_IMU;
-            timeout = millis() + 5000;
+            timeout = millis() + 7000;
             break;
         case CMD_SCREEN_OFF:
             screen = SCR_OFF;
@@ -55,7 +69,17 @@ void setup() {
 
     ble.begin();
     ble.onCommand(onCommand);
+    ble.onTimeReceived([](uint8_t h, uint8_t m, uint8_t s) {
+        hours = h;
+        minutes = m;
+        seconds = s;
+        lastTimeTick = millis();
+        ble.setTimeValue(hours, minutes, seconds);
+        screen = SCR_TIME;
+        timeout = millis() + 7000;
+    });
     display.btStatus("waiting");
+    timeout = millis() + 7000;
 }
 
 void loop() {
@@ -72,7 +96,7 @@ void loop() {
         Serial.print(BUTTON_PIN);
         Serial.println(")");
         screen = SCR_IMU;
-        timeout = millis() + 5000;
+        timeout = millis() + 7000;
     } else if (lastBtn == LOW && btn == HIGH) {
         Serial.println("Boton LIBERADO");
     }
@@ -96,27 +120,64 @@ void loop() {
         }
     }
 
+    if (now - lastTimeTick >= 1000) {
+        lastTimeTick = now;
+        seconds++;
+        if (seconds >= 60) {
+            seconds = 0;
+            minutes++;
+            if (minutes >= 60) {
+                minutes = 0;
+                hours = (hours + 1) % 24;
+            }
+        }
+        ble.setTimeValue(hours, minutes, seconds);
+    }
+
     if (now - lastScreenUpdate >= 200) {
         lastScreenUpdate = now;
 
-        if (screen == SCR_IMU && now < timeout) {
+        // --- Render / transition based on current screen ---
+        if (screen == SCR_IMU) {
             display.imuData(mpu.ax_g, mpu.ay_g, mpu.az_g, mpu.celsius);
-        } else if (screen == SCR_IMU) {
-            screen = ble.connected() ? SCR_BT : SCR_OFF;
+        }
+
+        if (screen == SCR_TIME) {
+            if (ble.connected()) {
+                display.showTime(hours, minutes, seconds, seconds % 2 == 0);
+            } else {
+                screen = SCR_BT;
+                timeout = now + 7000;
+            }
         }
 
         if (screen == SCR_BT) {
-            display.btStatus(ble.connected() ? "connected" : "waiting");
+            if (ble.connected()) {
+                screen = SCR_TIME;
+                timeout = now + 7000;
+            } else {
+                display.btStatus("waiting");
+            }
         }
 
         if (screen == SCR_OFF) {
-            if (mpu.az_g > 0.85f) {
-                screen = SCR_IMU;
-                timeout = now + 5000;
-            } else {
-                display.clear();
-            }
+            display.clear();
         }
+
+        // --- Unified timeout: any active screen turns off after 7s ---
+        if (screen != SCR_OFF && now >= timeout) {
+            screen = SCR_OFF;
+        }
+    }
+
+    // --- Wake-on-motion: rising edge of az_g > 0.85 (checked every loop) ---
+    {
+        bool currentWake = (mpu.az_g > 0.95f);
+        if (screen == SCR_OFF && currentWake && !lastWakeState) {
+            screen = ble.connected() ? SCR_TIME : SCR_IMU;
+            timeout = millis() + 7000;
+        }
+        lastWakeState = currentWake;
     }
 
     delay(20);

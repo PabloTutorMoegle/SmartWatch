@@ -23,6 +23,7 @@ void Display::splash() {
 
 void Display::imuData(float ax, float ay, float az, float temp) {
     oled->clearDisplay();
+    oled->setTextSize(1);
 
     oled->setCursor(16, 0);
     oled->println("MPU6050 DATA");
@@ -45,6 +46,25 @@ void Display::imuData(float ax, float ay, float az, float temp) {
     oled->print("Temp: ");
     oled->print(temp, 1);
     oled->print(" C");
+    oled->display();
+}
+
+void Display::showTime(uint8_t h, uint8_t m, uint8_t s, bool showColon) {
+    oled->clearDisplay();
+    oled->setTextSize(2);
+    oled->setTextColor(SSD1306_WHITE);
+
+    char buf[9];
+    snprintf(buf, sizeof(buf), "%02u%c%02u%c%02u",
+             h, showColon ? ':' : ' ',
+             m, showColon ? ':' : ' ',
+             s);
+
+    int16_t x1, y1;
+    uint16_t w, ht;
+    oled->getTextBounds(buf, 0, 0, &x1, &y1, &w, &ht);
+    oled->setCursor((SCREEN_WIDTH - w) / 2, (SCREEN_HEIGHT - ht) / 2);
+    oled->print(buf);
     oled->display();
 }
 
