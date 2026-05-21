@@ -11,20 +11,6 @@ Reloj inteligente con ESP32, acelerómetro MPU6050 y display OLED SSD1306.
 
 Ambos dispositivos comparten el bus I2C. Alimentación: 3.3V y GND.
 
-## Dependencias
-
-- [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306)
-- [Adafruit MPU6050](https://github.com/adafruit/Adafruit_MPU6050)
-
-Se instalan automáticamente al compilar con PlatformIO.
-
-## Compilar y subir
-
-```bash
-pio run -t upload
-pio device monitor  #ver monitor serial para ver log y prints
-```
-
 ## Esquema de conexión
 
 ```
@@ -36,8 +22,23 @@ GPIO23 ────────────────────────�
 GND ─────────── GND ────── GND ────── GND
 ```
 
-## Para setear la hora 
+## Dependencias
 
+- [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306)
+- [Adafruit MPU6050](https://github.com/adafruit/Adafruit_MPU6050)
+
+Se instalan automáticamente al compilar con PlatformIO.
+
+
+## Compilar y subir
+
+```bash
+pio run -t upload
+pio device monitor  #ver monitor serial para ver log y prints
+```
+
+## Para setear la hora 
+(Por el momento)
 Una vez conectado el bluetooth con el telefono medieante una de las apps (yo uso LightBlue) ir a buscar la CHAR_COMMAND_UUID el codigo numerico que termina en ea07361b26ab y teniendo en cuente el tipo de escritura que use poner la hora. En mi caso uso hexadecimal asi que para poner la hora debo poner:
 ```
 01 = comando CMD_SHOW_TIME (fijo)
@@ -54,6 +55,6 @@ Hora	    Bytes a escribir (hex)
 18:45:30      01 12 2D 1E
 ```
 
+------
 
-
-* Made by PabloTutorMoegle 
+Made by PabloTutorMoegle 
