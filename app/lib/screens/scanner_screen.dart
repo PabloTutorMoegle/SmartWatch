@@ -13,6 +13,7 @@ class ScannerScreen extends StatefulWidget {
 class _ScannerScreenState extends State<ScannerScreen> {
   List<ScanResult> _devices = [];
   bool _scanning = false;
+  String? _error;
 
   @override
   void initState() {
@@ -21,8 +22,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   Future<void> _startScan() async {
-    setState(() => _scanning = true);
-    _devices = await context.read<WatchService>().scan();
+    setState(() {
+      _scanning = true;
+      _error = null;
+      _devices = [];
+    });
+    try {
+      _devices = await context.read<WatchService>().scan();
+    } catch (e) {
+      _error = e.toString();
+    }
     if (mounted) setState(() => _scanning = false);
   }
 
@@ -38,12 +47,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(
-              'Buscar reloj',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            child: Text('Buscar reloj', style: Theme.of(context).textTheme.headlineSmall),
           ),
-          if (_scanning)
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  const Icon(Icons.error, color: Colors.red, size: 40),
+                  const SizedBox(height: 8),
+                  Text(_error!, textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _startScan,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            )
+          else if (_scanning)
             const Padding(
               padding: EdgeInsets.all(16),
               child: Row(
@@ -56,7 +80,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
           Expanded(
-            child: _devices.isEmpty && !_scanning
+            child: _error == null && _devices.isEmpty && !_scanning
                 ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

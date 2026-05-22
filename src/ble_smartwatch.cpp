@@ -71,6 +71,12 @@ void SmartWatchBLE::begin() {
     th->parent = this;
     charTime->setCallbacks(th);
 
+    charSteps = service->createCharacteristic(
+        CHAR_STEPS_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    charSteps->addDescriptor(new BLE2902());
+
     service->start();
 
     BLEAdvertising* adv = BLEDevice::getAdvertising();
@@ -123,4 +129,12 @@ void SmartWatchBLE::setTimeValue(uint8_t h, uint8_t m, uint8_t s) {
     uint8_t buf[3] = { h, m, s };
     charTime->setValue(buf, 3);
     charTime->notify();
+}
+
+void SmartWatchBLE::sendSteps(uint32_t steps) {
+    if (!deviceConnected) return;
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%lu", steps);
+    charSteps->setValue(buf);
+    charSteps->notify();
 }

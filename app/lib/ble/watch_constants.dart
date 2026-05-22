@@ -4,6 +4,7 @@ const String charTempUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
 const String charButtonUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26aa';
 const String charCommandUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26ab';
 const String charTimeUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26ac';
+const String charStepsUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26ad';
 
 const String targetDeviceName = 'SmartWatch-Pro';
 

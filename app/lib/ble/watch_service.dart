@@ -13,7 +13,11 @@ class WatchService extends ChangeNotifier {
   StreamSubscription? _imuSub;
   StreamSubscription? _tempSub;
   StreamSubscription? _buttonSub;
+  StreamSubscription? _timeSub;
+  StreamSubscription? _stepsSub;
   StreamSubscription? _connSub;
+
+  Timer? _timePoll;
 
   final WatchState _state = WatchState();
   WatchState get state => _state;
@@ -21,40 +25,31 @@ class WatchService extends ChangeNotifier {
   bool get isConnected => _state.connected;
 
   Future<List<ScanResult>> scan() async {
-    if (FlutterBluePlus.isScanningNow) {
-      await FlutterBluePlus.stopScan();
-    }
+    await FlutterBluePlus.stopScan();
 
     final results = <ScanResult>[];
-    final completer = Completer<List<ScanResult>>();
-    late StreamSubscription sub;
-
-    sub = FlutterBluePlus.scanResults.listen((list) {
+    final sub = FlutterBluePlus.scanResults.listen((list) {
       for (final r in list) {
-        final name = r.device.platformName;
-        if (name.contains(targetDeviceName) ||
-            r.device.remoteId.toString().contains(targetDeviceName)) {
-          if (!results.any((e) => e.device.remoteId == r.device.remoteId)) {
-            results.add(r);
-          }
-        }
-        if (results.isNotEmpty) {
-          completer.complete(results);
-          sub.cancel();
+        if (!results.any((e) => e.device.remoteId == r.device.remoteId)) {
+          results.add(r);
         }
       }
     });
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-
     try {
-      return await completer.future.timeout(const Duration(seconds: 11));
-    } catch (_) {
-      return results;
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 10),
+        androidUsesFineLocation: true,
+      );
+      await Future.delayed(const Duration(seconds: 11));
     } finally {
       await FlutterBluePlus.stopScan();
-      sub.cancel();
+      await sub.cancel();
     }
+
+    return results.where((r) =>
+        r.device.platformName.isNotEmpty ||
+        r.rssi > -90).toList();
   }
 
   Future<void> connect(BluetoothDevice device) async {
@@ -71,10 +66,11 @@ class WatchService extends ChangeNotifier {
     _state.connected = true;
     _state.deviceName = device.platformName;
     notifyListeners();
+    _startTimePoll();
   }
 
   Future<void> disconnect() async {
-    await _device!.disconnect();
+    await _device?.disconnect();
     _disconnected();
   }
 
@@ -84,6 +80,9 @@ class WatchService extends ChangeNotifier {
     _imuSub?.cancel();
     _tempSub?.cancel();
     _buttonSub?.cancel();
+    _timeSub?.cancel();
+    _stepsSub?.cancel();
+    _timePoll?.cancel();
     _charCommand = null;
     _charTime = null;
     notifyListeners();
@@ -109,11 +108,27 @@ class WatchService extends ChangeNotifier {
           } else if (uuid == charTimeUuid.toLowerCase()) {
             _charTime = chr;
             await chr.setNotifyValue(true);
-            chr.onValueReceived.listen(_parseTime);
+            _timeSub = chr.onValueReceived.listen(_parseTime);
+          } else if (uuid == charStepsUuid.toLowerCase()) {
+            _stepsSub = chr.onValueReceived.listen(_parseSteps);
+            await chr.setNotifyValue(true);
           }
         }
       }
     }
+  }
+
+  void _startTimePoll() {
+    _timePoll?.cancel();
+    _timePoll = Timer.periodic(const Duration(seconds: 2), (_) => _readTime());
+  }
+
+  Future<void> _readTime() async {
+    if (_charTime == null || !_state.connected) return;
+    try {
+      final data = await _charTime!.read();
+      _parseTime(data);
+    } catch (_) {}
   }
 
   void _parseImu(List<int> data) {
@@ -150,6 +165,12 @@ class WatchService extends ChangeNotifier {
     }
   }
 
+  void _parseSteps(List<int> data) {
+    final str = utf8.decode(data);
+    _state.steps = int.tryParse(str) ?? 0;
+    notifyListeners();
+  }
+
   Future<void> sendCommand(int cmd, [List<int>? data]) async {
     final cmdData = buildCommand(cmd, data);
     await _charCommand?.write(cmdData, withoutResponse: true);
@@ -173,7 +194,10 @@ class WatchService extends ChangeNotifier {
     _imuSub?.cancel();
     _tempSub?.cancel();
     _buttonSub?.cancel();
+    _timeSub?.cancel();
+    _stepsSub?.cancel();
     _connSub?.cancel();
+    _timePoll?.cancel();
     super.dispose();
   }
 }

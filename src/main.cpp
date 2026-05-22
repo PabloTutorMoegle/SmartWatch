@@ -115,6 +115,7 @@ void loop() {
             lastBleNotify = now;
             ble.sendIMU(mpu.ax, mpu.ay, mpu.az, mpu.gx, mpu.gy, mpu.gz);
             ble.sendTemp(mpu.celsius);
+            ble.sendSteps(mpu.getStepCount());
         }
     }
 
@@ -129,7 +130,9 @@ void loop() {
                 hours = (hours + 1) % 24;
             }
         }
-        ble.setTimeValue(hours, minutes, seconds);
+        if (ble.connected()) {
+            ble.setTimeValue(hours, minutes, seconds);
+        }
     }
 
     if (now - lastScreenUpdate >= 200) {
