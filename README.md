@@ -54,6 +54,49 @@ Hora	    Bytes a escribir (hex)
 12:00:00      01 0C 00 00
 18:45:30      01 12 2D 1E
 ```
+------
+## App companion (Android / iOS)
+
+Aplicación Flutter para controlar el reloj desde el teléfono vía BLE.
+
+### Stack
+
+- **Framework:** Flutter 3.38 (Dart)
+- **BLE:** `flutter_blue_plus` — escaneo, conexión, suscripción a notificaciones
+- **Estado:** `provider` (ChangeNotifier)
+- **Estructura:** `app/` en la raíz del monorepo
+
+### Arrancar
+
+```bash
+cd app
+flutter pub get
+flutter run
+```
+
+Requiere un dispositivo físico (Android o iOS) con BLE. No funciona en emulador.
+
+### Funcionalidades
+
+| Pantalla       | Descripción |
+|----------------|-------------|
+| Scanner        | Busca dispositivos `SmartWatch-Pro` y conecta |
+| Dashboard      | Hora del reloj, temperatura, IMU en vivo, pasos |
+| Comandos       | Botones para cambiar pantallas, sync hora, reset pasos |
+
+### BLE Protocol
+
+Mismo servicio/characteristics que el firmware:
+
+| Characteristic | UUID | Propiedad | Formato |
+|---------------|------|-----------|---------|
+| IMU (ax,ay,az,gx,gy,gz) | `...b26a8` | Notify | CSV `"ax,ay,az,gx,gy,gz"` |
+| Temperatura | `...b26a9` | Notify | String `"25.3"` |
+| Botón | `...b26aa` | Notify | String |
+| Comando | `...b26ab` | Write | `[cmd, data...]` |
+| Hora | `...b26ac` | Write/Notify | `[h, m, s]` |
+
+Comandos disponibles: `0x01` (Show Time), `0x02` (Show IMU), `0x03` (Screen Off), `0x04` (Vibrate), `0x05` (Show Steps), `0x06` (Reset Steps).
 
 ------
 

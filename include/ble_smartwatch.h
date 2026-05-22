@@ -16,6 +16,7 @@ public:
     void onCommand(std::function<void(uint8_t, uint8_t*, size_t)> cb);
     void onTimeReceived(std::function<void(uint8_t, uint8_t, uint8_t)> cb);
     void setTimeValue(uint8_t h, uint8_t m, uint8_t s);
+    void sendSteps(uint32_t steps);
 
 private:
     BLEServer* server = nullptr;
@@ -25,6 +26,7 @@ private:
     BLECharacteristic* charButton = nullptr;
     BLECharacteristic* charCommand = nullptr;
     BLECharacteristic* charTime = nullptr;
+    BLECharacteristic* charSteps = nullptr;
     bool deviceConnected = false;
     std::function<void(uint8_t, uint8_t*, size_t)> cmdCallback;
     std::function<void(uint8_t, uint8_t, uint8_t)> timeCallback;

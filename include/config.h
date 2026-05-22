@@ -19,6 +19,7 @@
 #define CHAR_BUTTON_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26aa"
 #define CHAR_COMMAND_UUID   "beb5483e-36e1-4688-b7f5-ea07361b26ab"
 #define CHAR_TIME_UUID      "beb5483e-36e1-4688-b7f5-ea07361b26ac"
+#define CHAR_STEPS_UUID     "beb5483e-36e1-4688-b7f5-ea07361b26ad"
 
 #define CMD_SHOW_TIME   0x01
 #define CMD_SHOW_IMU    0x02

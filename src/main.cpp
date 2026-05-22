@@ -110,21 +110,12 @@ void loop() {
     }
     lastBtn = btn;
 
-    if (now - tDiag >= 3000) {
-        tDiag = now;
-        Serial.print("GPIO");
-        Serial.print(BUTTON_PIN);
-        Serial.print(" = ");
-        Serial.print(btn);
-        Serial.print("  |  az_g = ");
-        Serial.println(mpu.az_g, 3);
-    }
-
     if (ble.connected()) {
         if (now - lastBleNotify >= 500) {
             lastBleNotify = now;
             ble.sendIMU(mpu.ax, mpu.ay, mpu.az, mpu.gx, mpu.gy, mpu.gz);
             ble.sendTemp(mpu.celsius);
+            ble.sendSteps(mpu.getStepCount());
         }
     }
 
@@ -139,7 +130,9 @@ void loop() {
                 hours = (hours + 1) % 24;
             }
         }
-        ble.setTimeValue(hours, minutes, seconds);
+        if (ble.connected()) {
+            ble.setTimeValue(hours, minutes, seconds);
+        }
     }
 
     if (now - lastScreenUpdate >= 200) {
