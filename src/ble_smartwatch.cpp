@@ -89,21 +89,16 @@ void SmartWatchBLE::begin() {
     Serial.printf("[BLE] Servicio iniciado: %s\n", BLE_DEVICE_NAME);
 }
 
-void SmartWatchBLE::sendIMU(int16_t ax, int16_t ay, int16_t az,
-                            int16_t gx, int16_t gy, int16_t gz) {
+void SmartWatchBLE::sendAll(int16_t ax, int16_t ay, int16_t az,
+                            int16_t gx, int16_t gy, int16_t gz,
+                            float celsius, uint32_t steps,
+                            uint8_t h, uint8_t m, uint8_t s) {
     if (!deviceConnected) return;
-    char buf[48];
-    snprintf(buf, sizeof(buf), "%d,%d,%d,%d,%d,%d", ax, ay, az, gx, gy, gz);
+    char buf[96];
+    snprintf(buf, sizeof(buf), "%d,%d,%d,%d,%d,%d,%.1f,%lu,%u,%u,%u",
+             ax, ay, az, gx, gy, gz, celsius, steps, h, m, s);
     charIMU->setValue(buf);
     charIMU->notify();
-}
-
-void SmartWatchBLE::sendTemp(float celsius) {
-    if (!deviceConnected) return;
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%.2f", celsius);
-    charTemp->setValue(buf);
-    charTemp->notify();
 }
 
 void SmartWatchBLE::sendButton(const char* state) {
@@ -129,12 +124,4 @@ void SmartWatchBLE::setTimeValue(uint8_t h, uint8_t m, uint8_t s) {
     uint8_t buf[3] = { h, m, s };
     charTime->setValue(buf, 3);
     charTime->notify();
-}
-
-void SmartWatchBLE::sendSteps(uint32_t steps) {
-    if (!deviceConnected) return;
-    char buf[12];
-    snprintf(buf, sizeof(buf), "%lu", steps);
-    charSteps->setValue(buf);
-    charSteps->notify();
 }

@@ -113,9 +113,9 @@ void loop() {
     if (ble.connected()) {
         if (now - lastBleNotify >= 500) {
             lastBleNotify = now;
-            ble.sendIMU(mpu.ax, mpu.ay, mpu.az, mpu.gx, mpu.gy, mpu.gz);
-            ble.sendTemp(mpu.celsius);
-            ble.sendSteps(mpu.getStepCount());
+            ble.sendAll(mpu.ax, mpu.ay, mpu.az, mpu.gx, mpu.gy, mpu.gz,
+                        mpu.celsius, mpu.getStepCount(),
+                        hours, minutes, seconds);
         }
     }
 
@@ -129,9 +129,6 @@ void loop() {
                 minutes = 0;
                 hours = (hours + 1) % 24;
             }
-        }
-        if (ble.connected()) {
-            ble.setTimeValue(hours, minutes, seconds);
         }
     }
 

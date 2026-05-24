@@ -9,14 +9,12 @@
 class SmartWatchBLE {
 public:
     void begin();
-    void sendIMU(int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz);
-    void sendTemp(float celsius);
+    void sendAll(int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, float celsius, uint32_t steps, uint8_t h, uint8_t m, uint8_t s);
     void sendButton(const char* state);
     bool connected();
     void onCommand(std::function<void(uint8_t, uint8_t*, size_t)> cb);
     void onTimeReceived(std::function<void(uint8_t, uint8_t, uint8_t)> cb);
     void setTimeValue(uint8_t h, uint8_t m, uint8_t s);
-    void sendSteps(uint32_t steps);
 
 private:
     BLEServer* server = nullptr;
