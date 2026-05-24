@@ -13,17 +13,13 @@ class ScannerScreen extends StatefulWidget {
 class _ScannerScreenState extends State<ScannerScreen> {
   List<ScanResult> _devices = [];
   bool _scanning = false;
+  bool _scanned = false;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _startScan();
-  }
 
   Future<void> _startScan() async {
     setState(() {
       _scanning = true;
+      _scanned = true;
       _error = null;
       _devices = [];
     });
@@ -43,76 +39,71 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('SmartCatch')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Buscar reloj', style: Theme.of(context).textTheme.headlineSmall),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+      body: Center(
+        child: _scanning
+            ? const Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error, color: Colors.red, size: 40),
-                  const SizedBox(height: 8),
-                  Text(_error!, textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _startScan,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reintentar'),
-                  ),
-                ],
-              ),
-            )
-          else if (_scanning)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 12),
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
                   Text('Escaneando...'),
                 ],
-              ),
-            ),
-          Expanded(
-            child: _error == null && _devices.isEmpty && !_scanning
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('No se encontraron dispositivos'),
-                        const SizedBox(height: 12),
-                        FilledButton.icon(
-                          onPressed: _startScan,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Escanear de nuevo'),
-                        ),
-                      ],
-                    ),
+              )
+            : _error != null
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error, color: Colors.red, size: 48),
+                      const SizedBox(height: 12),
+                      Text(_error!, textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _startScan,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
+                      ),
+                    ],
                   )
-                : ListView.builder(
-                    itemCount: _devices.length,
-                    itemBuilder: (_, i) {
-                      final d = _devices[i];
-                      final name = d.device.platformName.isNotEmpty
-                          ? d.device.platformName
-                          : d.device.remoteId.toString();
-                      return ListTile(
-                        leading: const Icon(Icons.watch),
-                        title: Text(name),
-                        subtitle: Text('${d.rssi} dBm'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _connect(d.device),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                : !_scanned
+                    ? FilledButton.icon(
+                        onPressed: _startScan,
+                        icon: const Icon(Icons.bluetooth_searching),
+                        label: const Text('Escanear'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                          textStyle: const TextStyle(fontSize: 18),
+                        ),
+                      )
+                    : _devices.isEmpty
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('No se encontraron dispositivos'),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: _startScan,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Escanear de nuevo'),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            itemCount: _devices.length,
+                            itemBuilder: (_, i) {
+                              final d = _devices[i];
+                              final name = d.device.platformName.isNotEmpty
+                                  ? d.device.platformName
+                                  : d.device.remoteId.toString();
+                              return ListTile(
+                                leading: const Icon(Icons.watch),
+                                title: Text(name),
+                                subtitle: Text('${d.rssi} dBm'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _connect(d.device),
+                              );
+                            },
+                          ),
       ),
     );
   }
