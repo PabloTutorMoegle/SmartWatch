@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <cstring>
 #include <Wire.h>
 #include "config.h"
 #include "mpu.h"
@@ -9,7 +10,7 @@ MPU mpu;
 Display display;
 SmartWatchBLE ble;
 
-enum Screen { SCR_OFF, SCR_HOME, SCR_IMU, SCR_STEPS, SCR_TIME };
+enum Screen { SCR_OFF, SCR_HOME, SCR_IMU, SCR_STEPS, SCR_TIME, SCR_NOTIFICATION };
 Screen screen = SCR_HOME;
 
 int lastBtn = HIGH;
@@ -23,6 +24,40 @@ unsigned long lastTimeTick = 0;
 
 bool lastWakeState = false;
 unsigned long tDiag = 0;
+
+struct Notification {
+    char title[NOTIF_TITLE_MAX];
+    char msg[NOTIF_MSG_MAX];
+};
+Notification notifQueue[NOTIF_QUEUE_MAX];
+int notifHead = 0;
+int notifTail = 0;
+int notifCount = 0;
+
+int notifViewIdx = 0;
+
+bool pushNotification(const char* title, const char* msg) {
+    if (notifCount >= NOTIF_QUEUE_MAX) return false;
+    Notification* n = &notifQueue[notifTail];
+    strncpy(n->title, title, NOTIF_TITLE_MAX - 1);
+    n->title[NOTIF_TITLE_MAX - 1] = '\0';
+    strncpy(n->msg, msg, NOTIF_MSG_MAX - 1);
+    n->msg[NOTIF_MSG_MAX - 1] = '\0';
+    notifTail = (notifTail + 1) % NOTIF_QUEUE_MAX;
+    notifCount++;
+    return true;
+}
+
+void clearNotifications() {
+    notifHead = 0;
+    notifTail = 0;
+    notifCount = 0;
+    notifViewIdx = 0;
+}
+
+int notifUnreadCount() {
+    return notifCount;
+}
 
 void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
     switch (cmd) {
@@ -50,6 +85,36 @@ void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
             break;
         case CMD_RESET_STEPS:
             mpu.resetSteps();
+            break;
+        case CMD_SEND_NOTIFICATION: {
+            if (len < 3) break;
+            uint8_t tlen = data[1];
+            if (tlen >= len - 2) break;
+            uint8_t mlen = data[2 + tlen];
+            if (2 + tlen + 1 + mlen > len) break;
+            char tbuf[NOTIF_TITLE_MAX];
+            char mbuf[NOTIF_MSG_MAX];
+            int tcopy = (tlen < NOTIF_TITLE_MAX - 1) ? tlen : NOTIF_TITLE_MAX - 1;
+            memcpy(tbuf, &data[2], tcopy);
+            tbuf[tcopy] = '\0';
+            int mcopy = (mlen < NOTIF_MSG_MAX - 1) ? mlen : NOTIF_MSG_MAX - 1;
+            memcpy(mbuf, &data[2 + tlen + 1], mcopy);
+            mbuf[mcopy] = '\0';
+            if (pushNotification(tbuf, mbuf)) {
+                if (screen == SCR_HOME || screen == SCR_OFF) {
+                    notifViewIdx = notifHead;
+                    screen = SCR_NOTIFICATION;
+                    timeout = millis() + 7000;
+                }
+            }
+            break;
+        }
+        case CMD_CLEAR_NOTIFICATIONS:
+            clearNotifications();
+            if (screen == SCR_NOTIFICATION) {
+                screen = SCR_HOME;
+                timeout = millis() + 7000;
+            }
             break;
     }
 }
@@ -97,7 +162,18 @@ void loop() {
 
     int btn = digitalRead(BUTTON_PIN);
     if (lastBtn == HIGH && btn == LOW) {
-        if (screen == SCR_HOME) {
+        if (screen == SCR_NOTIFICATION) {
+            if (notifCount > 1) {
+                notifHead = (notifHead + 1) % NOTIF_QUEUE_MAX;
+                notifCount--;
+                notifViewIdx = notifHead;
+                timeout = millis() + 7000;
+            } else {
+                clearNotifications();
+                screen = SCR_HOME;
+                timeout = millis() + 7000;
+            }
+        } else if (screen == SCR_HOME) {
             screen = SCR_IMU;
         } else if (screen == SCR_IMU) {
             screen = SCR_STEPS;
@@ -137,7 +213,11 @@ void loop() {
 
         // --- Render / transition based on current screen ---
         if (screen == SCR_HOME) {
-            display.showHome(hours, minutes, seconds, seconds % 2 == 0, mpu.celsius, mpu.getStepCount());
+            if (notifCount > 0) {
+                display.showHomeWithNotif(hours, minutes, seconds, seconds % 2 == 0, mpu.celsius, mpu.getStepCount(), notifCount);
+            } else {
+                display.showHome(hours, minutes, seconds, seconds % 2 == 0, mpu.celsius, mpu.getStepCount());
+            }
         }
 
         if (screen == SCR_IMU) {
@@ -150,6 +230,15 @@ void loop() {
 
         if (screen == SCR_TIME) {
             display.showTime(hours, minutes, seconds, seconds % 2 == 0);
+        }
+
+        if (screen == SCR_NOTIFICATION) {
+            if (notifCount > 0) {
+                Notification* n = &notifQueue[notifViewIdx];
+                display.showNotification(n->title, n->msg, notifCount);
+            } else {
+                screen = SCR_HOME;
+            }
         }
 
         if (screen == SCR_OFF) {

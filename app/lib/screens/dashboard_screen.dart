@@ -1,11 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import '../ble/watch_service.dart';
 import '../ble/watch_constants.dart';
 import '../models/watch_data.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  String _lastNotifTitle = '';
+  String _lastNotifText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final svc = context.read<WatchService>();
+
+    svc.notifHandler.onNotification.listen((n) {
+      if (mounted) {
+        setState(() {
+          _lastNotifTitle = n.title;
+          _lastNotifText = n.text;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +70,12 @@ class DashboardScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _NotifStatusCard(
+                  listening: service.notifHandler.isListening,
+                  lastTitle: _lastNotifTitle,
+                  lastText: _lastNotifText,
+                ),
+                const SizedBox(height: 12),
                 _TimeCard(state: state),
                 const SizedBox(height: 12),
                 _ImuCard(state: state),
@@ -57,6 +87,72 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NotifStatusCard extends StatelessWidget {
+  final bool listening;
+  final String lastTitle;
+  final String lastText;
+
+  const _NotifStatusCard({
+    required this.listening,
+    required this.lastTitle,
+    required this.lastText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  listening ? Icons.notifications_active : Icons.notifications_off,
+                  color: listening ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text('Notificaciones', style: theme.textTheme.titleMedium),
+                const Spacer(),
+                Text(
+                  listening ? 'Activo' : 'Inactivo',
+                  style: TextStyle(
+                    color: listening ? Colors.green : Colors.red,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            if (lastTitle.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Text('Última:', style: theme.textTheme.labelSmall),
+              Text(lastTitle, style: theme.textTheme.bodyMedium),
+              if (lastText.isNotEmpty)
+                Text(lastText, style: theme.textTheme.bodySmall),
+            ],
+            if (!listening) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => NotificationsListener.openPermissionSettings(),
+                  icon: const Icon(Icons.settings, size: 16),
+                  label: const Text('Abrir ajustes notificaciones'),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -176,6 +272,19 @@ class _CommandsCard extends StatelessWidget {
                 _cmdBtn('Apagar', Icons.power_settings_new, () => service.sendCommand(cmdScreenOff)),
                 _cmdBtn('Reset pasos', Icons.restart_alt, () => service.sendCommand(cmdResetSteps)),
                 _cmdBtn('Sync hora', Icons.sync, () => _syncTime(context)),
+                _cmdBtn('Test notif', Icons.notifications, () {
+                  service.sendTestNotification();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Test notification sent'), duration: Duration(seconds: 1)),
+                  );
+                }),
+                _cmdBtn('Test raw', Icons.warning, () {
+                  final data = buildSendNotification('RAW TEST', 'Mensaje directo');
+                  service.sendCommand(cmdSendNotification, data.sublist(1));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Raw command sent'), duration: Duration(seconds: 1)),
+                  );
+                }),
               ],
             ),
           ],
