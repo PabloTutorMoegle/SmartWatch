@@ -1,134 +1,223 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/watch_data.dart';
+import '../services/background_service.dart';
 import 'watch_constants.dart';
 
 class WatchService extends ChangeNotifier {
-  BluetoothDevice? _device;
-  BluetoothCharacteristic? _charCommand;
-  BluetoothCharacteristic? _charTime;
-
-  StreamSubscription? _imuSub;
-  StreamSubscription? _connSub;
-
   final WatchState _state = WatchState();
   WatchState get state => _state;
-
   bool get isConnected => _state.connected;
 
-  Future<List<ScanResult>> scan() async {
-    await FlutterBluePlus.stopScan();
+  StreamSubscription<Map<String, dynamic>?>? _serviceSub;
+  bool _initialized = false;
 
-    final results = <ScanResult>[];
-    final sub = FlutterBluePlus.scanResults.listen((list) {
-      for (final r in list) {
-        if (!results.any((e) => e.device.remoteId == r.device.remoteId)) {
-          results.add(r);
-        }
-      }
-    });
+  Future<void> init() async {
+    if (_initialized) return;
+    _initialized = true;
 
     try {
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 10),
-        androidUsesFineLocation: true,
-      );
-      await Future.delayed(const Duration(seconds: 11));
-    } finally {
-      await FlutterBluePlus.stopScan();
-      await sub.cancel();
-    }
+      await configureBackgroundService();
 
-    return results.where((r) =>
-        r.device.platformName.isNotEmpty ||
-        r.rssi > -90).toList();
-  }
+      _serviceSub?.cancel();
+      _serviceSub = FlutterBackgroundService()
+          .on('data')
+          .listen(_onServiceData);
 
-  Future<void> connect(BluetoothDevice device) async {
-    _device = device;
-    _connSub?.cancel();
-    _connSub = device.connectionState.listen((state) {
-      if (state == BluetoothConnectionState.disconnected) {
-        _disconnected();
+      _state.loading = true;
+      notifyListeners();
+
+      final running = await FlutterBackgroundService().isRunning();
+      if (!running) {
+        await _ensureNotificationChannel();
+        await FlutterBackgroundService().startService();
       }
-    });
 
-    await device.connect();
-    await _discoverServices(device);
-    _state.connected = true;
-    _state.deviceName = device.platformName;
-    notifyListeners();
-  }
-
-  Future<void> disconnect() async {
-    await _device?.disconnect();
-    _disconnected();
-  }
-
-  void _disconnected() {
-    _state.connected = false;
-    _state.deviceName = '';
-    _imuSub?.cancel();
-    _charCommand = null;
-    _charTime = null;
-    notifyListeners();
-  }
-
-  Future<void> _discoverServices(BluetoothDevice device) async {
-    final services = await device.discoverServices();
-    for (final svc in services) {
-      if (svc.uuid.toString().toLowerCase() == serviceUuid.toLowerCase()) {
-        for (final chr in svc.characteristics) {
-          final uuid = chr.uuid.toString().toLowerCase();
-          if (uuid == charImuUuid.toLowerCase()) {
-            _imuSub = chr.onValueReceived.listen(_parseImu);
-            await chr.setNotifyValue(true);
-          } else if (uuid == charCommandUuid.toLowerCase()) {
-            _charCommand = chr;
-          } else if (uuid == charTimeUuid.toLowerCase()) {
-            _charTime = chr;
-          }
-        }
-      }
-    }
-  }
-
-  void _parseImu(List<int> data) {
-    final str = utf8.decode(data);
-    final parts = str.split(',');
-    if (parts.length >= 11) {
-      _state.imu = ImuData(
-        ax: int.parse(parts[0]),
-        ay: int.parse(parts[1]),
-        az: int.parse(parts[2]),
-        gx: int.parse(parts[3]),
-        gy: int.parse(parts[4]),
-        gz: int.parse(parts[5]),
-      );
-      _state.temperature = double.tryParse(parts[6]);
-      _state.steps = int.tryParse(parts[7]) ?? 0;
-      _state.time = WatchTime(
-        hours: int.tryParse(parts[8]) ?? 0,
-        minutes: int.tryParse(parts[9]) ?? 0,
-        seconds: int.tryParse(parts[10]) ?? 0,
-      );
+      await Future.delayed(const Duration(milliseconds: 300));
+      try {
+        FlutterBackgroundService().invoke('data', {'action': 'get_state'});
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('BackgroundService init error: $e');
+      _state.loading = false;
       notifyListeners();
     }
   }
 
+  void _onServiceData(Map<String, dynamic>? data) {
+    if (data == null) return;
+    try {
+      switch (data['type'] as String) {
+        case 'connection':
+          _state.loading = false;
+          _state.connected = data['connected'] == true;
+          _state.deviceName = (data['name'] as String?) ?? '';
+          _state.reconnecting = false;
+          if (data['error'] != null) {
+            _state.lastError = data['error'] as String?;
+          }
+          notifyListeners();
+        case 'imu_data':
+          _state.imu = ImuData(
+            ax: int.parse(data['ax'] as String),
+            ay: int.parse(data['ay'] as String),
+            az: int.parse(data['az'] as String),
+            gx: int.parse(data['gx'] as String),
+            gy: int.parse(data['gy'] as String),
+            gz: int.parse(data['gz'] as String),
+          );
+          _state.temperature = double.tryParse(data['temp'] as String);
+          _state.steps = int.tryParse(data['steps'] as String) ?? 0;
+          _state.time = WatchTime(
+            hours: int.tryParse(data['h'] as String) ?? 0,
+            minutes: int.tryParse(data['m'] as String) ?? 0,
+            seconds: int.tryParse(data['s'] as String) ?? 0,
+          );
+          notifyListeners();
+        case 'reconnecting':
+          _state.loading = false;
+          _state.reconnecting = true;
+          _state.reconnectAttempt = data['attempt'] as int? ?? 0;
+          notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error parsing service data: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> scan() async {
+    final granted = await _ensureBlePermissions();
+    if (!granted) return [];
+
+    try {
+      await FlutterBluePlus.stopScan();
+
+      final devices = <Map<String, dynamic>>[];
+      final sub = FlutterBluePlus.scanResults.listen((list) {
+        for (final r in list) {
+          final id = r.device.remoteId.toString();
+          if (!devices.any((d) => d['id'] == id)) {
+            devices.add({
+              'id': id,
+              'name': r.device.platformName.isNotEmpty
+                  ? r.device.platformName
+                  : id,
+              'rssi': r.rssi,
+            });
+          }
+        }
+      });
+
+      try {
+        await FlutterBluePlus.startScan(
+          timeout: const Duration(seconds: 10),
+          androidUsesFineLocation: true,
+        );
+        await Future.delayed(const Duration(seconds: 10));
+      } finally {
+        await FlutterBluePlus.stopScan();
+        await sub.cancel();
+      }
+
+      return devices;
+    } catch (e) {
+      debugPrint('Scan error: $e');
+      return [];
+    }
+  }
+
+  Future<void> connect(String deviceId, String? deviceName) async {
+    _state.reconnecting = false;
+    notifyListeners();
+    try {
+      FlutterBackgroundService().invoke('data', {
+        'action': 'connect',
+        'deviceId': deviceId,
+        'deviceName': deviceName ?? '',
+      });
+    } catch (_) {}
+  }
+
+  Future<void> disconnect() async {
+    try {
+      FlutterBackgroundService().invoke('data', {'action': 'disconnect'});
+    } catch (_) {}
+    _state.reconnecting = false;
+    notifyListeners();
+  }
+
   Future<void> sendCommand(int cmd, [List<int>? data]) async {
-    final cmdData = buildCommand(cmd, data);
-    await _charCommand?.write(cmdData, withoutResponse: true);
+    try {
+      FlutterBackgroundService().invoke('data', {
+        'action': 'send_command',
+        'cmd': cmd,
+        'args': data,
+      });
+    } catch (_) {}
   }
 
   Future<void> sendTime(int h, int m, int s) async {
-    await _charTime?.write([h, m, s], withoutResponse: true);
+    try {
+      FlutterBackgroundService().invoke('data', {
+        'action': 'send_time',
+        'h': h,
+        'm': m,
+        's': s,
+      });
+    } catch (_) {}
   }
 
   Future<void> showTime(int h, int m, int s) async {
-    await _charCommand?.write(buildTimeCommand(h, m, s), withoutResponse: true);
+    try {
+      FlutterBackgroundService().invoke('data', {
+        'action': 'show_time',
+        'h': h,
+        'm': m,
+        's': s,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _ensureNotificationChannel() async {
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final android = plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      await android.requestNotificationsPermission();
+      await android.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'smartcatch_ble',
+          'SmartCatch BLE',
+          description: 'Mantiene la conexión Bluetooth con el reloj',
+          importance: Importance.low,
+          playSound: false,
+          enableVibration: false,
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<bool> _ensureBlePermissions() async {
+    try {
+      var status = await Permission.bluetoothScan.status;
+      if (status.isGranted) return true;
+
+      status = await Permission.bluetoothScan.request();
+      if (!status.isGranted) return false;
+
+      status = await Permission.bluetoothConnect.request();
+      if (!status.isGranted) return false;
+
+      status = await Permission.locationWhenInUse.request();
+      return status.isGranted;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> showImu() async => sendCommand(cmdShowImu);
@@ -138,8 +227,7 @@ class WatchService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _imuSub?.cancel();
-    _connSub?.cancel();
+    _serviceSub?.cancel();
     super.dispose();
   }
 }
