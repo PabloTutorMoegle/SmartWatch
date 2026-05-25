@@ -32,5 +32,9 @@ class WatchState {
   int steps = 0;
   String? buttonState;
   bool connected = false;
+  bool loading = true;
   String deviceName = '';
+  bool reconnecting = false;
+  int reconnectAttempt = 0;
+  String? lastError;
 }

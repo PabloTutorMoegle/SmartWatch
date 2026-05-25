@@ -4,10 +4,12 @@ import 'ble/watch_service.dart';
 import 'screens/scanner_screen.dart';
 import 'screens/dashboard_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(
     ChangeNotifierProvider(
-      create: (_) => WatchService(),
+      create: (_) => WatchService()..init(),
       child: const SmartCatchApp(),
     ),
   );
@@ -36,7 +38,13 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final connected = context.watch<WatchService>().isConnected;
-    return connected ? const DashboardScreen() : const ScannerScreen();
+    final svc = context.watch<WatchService>();
+    final state = svc.state;
+    if (state.loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return state.connected ? const DashboardScreen() : const ScannerScreen();
   }
 }

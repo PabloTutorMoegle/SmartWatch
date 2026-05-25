@@ -23,16 +23,39 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
-          _TimeCard(state: state),
-          const SizedBox(height: 12),
-          _ImuCard(state: state),
-          const SizedBox(height: 12),
-          _StepsCard(state: state),
-          const SizedBox(height: 12),
-          _CommandsCard(service: service),
+          if (state.reconnecting)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade800,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Reconectando… (intento ${state.reconnectAttempt})'),
+                ],
+              ),
+            ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _TimeCard(state: state),
+                const SizedBox(height: 12),
+                _ImuCard(state: state),
+                const SizedBox(height: 12),
+                _StepsCard(state: state),
+                const SizedBox(height: 12),
+                _CommandsCard(service: service),
+              ],
+            ),
+          ),
         ],
       ),
     );
