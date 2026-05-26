@@ -36,7 +36,7 @@
             </intent-filter>
         </activity>
         <service
-            android:name="com.taitos.flutter_notification_listener.NotificationListenerService"
+            android:name=".NotifListenerService"
             android:label="SmartCatch"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">

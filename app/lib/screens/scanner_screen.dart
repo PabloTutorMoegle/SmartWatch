@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import '../ble/watch_service.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -169,8 +168,9 @@ class _NotifPermissionCardState extends State<_NotifPermissionCard> {
   }
 
   Future<void> _check() async {
-    final result = await NotificationsListener.hasPermission;
-    if (mounted) setState(() => _hasPermission = result ?? false);
+    final svc = context.read<WatchService>();
+    final result = await svc.notifHandler.hasPermission();
+    if (mounted) setState(() => _hasPermission = result);
   }
 
   @override
@@ -201,7 +201,10 @@ class _NotifPermissionCardState extends State<_NotifPermissionCard> {
               ),
             ),
             TextButton(
-              onPressed: () => NotificationsListener.openPermissionSettings(),
+              onPressed: () async {
+                final svc = context.read<WatchService>();
+                await svc.notifHandler.openSettings();
+              },
               style: TextButton.styleFrom(foregroundColor: Colors.white),
               child: const Text('Abrir ajustes'),
             ),

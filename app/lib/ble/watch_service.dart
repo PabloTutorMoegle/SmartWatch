@@ -9,6 +9,28 @@ import '../services/background_service.dart';
 import '../services/notification_handler.dart';
 import 'watch_constants.dart';
 
+class NotificationDebugInfo {
+  final String package;
+  final String originalTitle;
+  final String originalText;
+  final String appName;
+  final String preview;
+  final DateTime timestamp;
+  final String status; // 'enviando', 'enviado', 'error'
+  final String? error;
+
+  NotificationDebugInfo({
+    required this.package,
+    required this.originalTitle,
+    required this.originalText,
+    required this.appName,
+    required this.preview,
+    required this.timestamp,
+    required this.status,
+    this.error,
+  });
+}
+
 class WatchService extends ChangeNotifier {
   final WatchState _state = WatchState();
   WatchState get state => _state;
@@ -19,6 +41,9 @@ class WatchService extends ChangeNotifier {
 
   StreamSubscription<Map<String, dynamic>?>? _serviceSub;
   bool _initialized = false;
+
+  NotificationDebugInfo? _notifDebug;
+  NotificationDebugInfo? get notifDebug => _notifDebug;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -60,22 +85,65 @@ class WatchService extends ChangeNotifier {
     }
   }
 
+  String _appNameFromPackage(String package) {
+    final known = <String, String>{
+      'com.whatsapp': 'WhatsApp',
+      'com.google.android.gm': 'Gmail',
+      'com.google.android.apps.messaging': 'Messages',
+      'com.android.dialer': 'Phone',
+      'com.google.android.dialer': 'Phone',
+      'com.android.incallui': 'Phone',
+      'com.google.android.youtube': 'YouTube',
+      'com.spotify.music': 'Spotify',
+      'com.twitter.android': 'X',
+      'com.facebook.katana': 'Facebook',
+      'com.instagram.android': 'Instagram',
+      'com.slack': 'Slack',
+      'com.microsoft.teams': 'Teams',
+      'com.android.systemui': 'System',
+    };
+    return known[package] ?? package.split('.').last;
+  }
+
   void _startNotificationForwarding() {
     debugPrint('WatchService: starting notification forwarding');
     notifHandler.startListening();
     _notifSub?.cancel();
     _notifSub = notifHandler.onNotification.listen((n) {
-      final title = n.title;
+      final appName = _appNameFromPackage(n.package);
       final text = notifHandler.formatForWatch(n);
-      debugPrint('WatchService: forwarding notif title="$title" text="$text"');
-      if (title.isEmpty && text.isEmpty) return;
+      final preview = text.length > 15 ? text.substring(0, 15) : text;
+      if (appName.isEmpty && preview.isEmpty) return;
+      _notifDebug = NotificationDebugInfo(
+        package: n.package,
+        originalTitle: n.title,
+        originalText: n.text,
+        appName: appName,
+        preview: preview,
+        timestamp: DateTime.now(),
+        status: 'enviando',
+      );
+      notifyListeners();
+      debugPrint('WatchService: forwarding app="$appName" preview="$preview"');
       try {
         FlutterBackgroundService().invoke('data', {
           'action': 'send_notification',
-          'title': title,
-          'text': text,
+          'title': appName,
+          'text': preview,
         });
-      } catch (_) {}
+      } catch (e) {
+        _notifDebug = NotificationDebugInfo(
+          package: n.package,
+          originalTitle: n.title,
+          originalText: n.text,
+          appName: appName,
+          preview: preview,
+          timestamp: DateTime.now(),
+          status: 'error',
+          error: 'invoke failed: $e',
+        );
+        notifyListeners();
+      }
     });
   }
 
@@ -125,6 +193,20 @@ class WatchService extends ChangeNotifier {
           _state.reconnecting = true;
           _state.reconnectAttempt = data['attempt'] as int? ?? 0;
           notifyListeners();
+        case 'notif_send_result':
+          if (_notifDebug != null) {
+            _notifDebug = NotificationDebugInfo(
+              package: _notifDebug!.package,
+              originalTitle: _notifDebug!.originalTitle,
+              originalText: _notifDebug!.originalText,
+              appName: _notifDebug!.appName,
+              preview: _notifDebug!.preview,
+              timestamp: _notifDebug!.timestamp,
+              status: (data['success'] == true) ? 'enviado' : 'error',
+              error: data['error'] as String?,
+            );
+            notifyListeners();
+          }
       }
     } catch (e) {
       debugPrint('Error parsing service data: $e');

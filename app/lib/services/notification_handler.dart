@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_notification_listener/flutter_notification_listener.dart';
+import 'package:flutter/services.dart';
 
 class AndroidNotification {
   final String package;
@@ -16,109 +16,91 @@ class AndroidNotification {
   });
 }
 
-enum NotifType { chat, call, email, other }
-
 class NotificationHandler extends ChangeNotifier {
+  static const _channel = MethodChannel('smartcatch_notifications');
+
   final _notifController = StreamController<AndroidNotification>.broadcast();
   Stream<AndroidNotification> get onNotification => _notifController.stream;
 
-  StreamSubscription<dynamic>? _portSub;
+  Timer? _pollTimer;
   bool _listening = false;
 
   bool get isListening => _listening;
 
   Future<bool> hasPermission() async {
-    final result = await NotificationsListener.hasPermission;
-    return result ?? false;
-  }
-
-  Future<void> openSettings() async {
-    await NotificationsListener.openPermissionSettings();
-  }
-
-  Future<bool> _initPlugin() async {
     try {
-      await NotificationsListener.initialize();
-      return true;
+      final result = await _channel.invokeMethod<bool>('hasPermission');
+      return result ?? false;
     } catch (e) {
-      debugPrint('NotifListener init error: $e');
+      debugPrint('NotifHandler: hasPermission error: $e');
       return false;
     }
   }
 
-  Future<void> startListening() async {
+  Future<void> openSettings() async {
+    try {
+      await _channel.invokeMethod('openSettings');
+    } catch (e) {
+      debugPrint('NotifHandler: openSettings error: $e');
+    }
+  }
+
+  void startListening() {
     if (_listening) return;
+    _listening = true;
 
-    await _initPlugin();
-
-    final hasPerm = await hasPermission();
-    debugPrint('NotificationHandler: hasPermission=$hasPerm');
-
-    final port = NotificationsListener.receivePort;
-    debugPrint('NotificationHandler: receivePort=$port');
-    if (port == null) return;
-
-    _portSub?.cancel();
-    _portSub = port.listen((event) {
-      debugPrint('NotificationHandler: raw event=$event');
-      if (event is NotificationEvent) {
-        final pkg = event.packageName ?? '';
-        final title = event.title ?? '';
-        final text = event.text ?? '';
-        final raw = event.raw;
-        final category = raw is Map ? (raw['category'] as String? ?? '') : '';
-
-        debugPrint('NotificationHandler: pkg=$pkg title=$title text=$text category=$category');
-
-        if (title.isEmpty && text.isEmpty) return;
-
-        _notifController.add(AndroidNotification(
-          package: pkg,
-          title: title,
-          text: text,
-          category: category,
-        ));
-      } else {
-        debugPrint('NotificationHandler: unexpected event type=${event.runtimeType}');
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'notification') {
+        await _fetchPending();
       }
     });
 
-    _listening = true;
-    debugPrint('NotificationHandler: listening started');
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+      _fetchPending();
+    });
+
+    notifyListeners();
   }
 
-  Future<void> stopListening() async {
-    await _portSub?.cancel();
-    _portSub = null;
+  void stopListening() {
     _listening = false;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    notifyListeners();
   }
 
-  static bool isCall(AndroidNotification n) {
-    return n.package == 'com.android.dialer' ||
-        n.package == 'com.android.incallui' ||
-        n.package == 'com.google.android.dialer';
-  }
-
-  static bool isChat(AndroidNotification n) {
-    return n.category == 'msg' || n.category == 'chat' || n.category == 'email';
-  }
-
-  NotifType classify(AndroidNotification n) {
-    if (isCall(n)) return NotifType.call;
-    if (isChat(n)) return NotifType.chat;
-    return NotifType.other;
+  Future<void> _fetchPending() async {
+    try {
+      final result =
+          await _channel.invokeMethod<List<dynamic>>('getPendingNotifications');
+      if (result == null) return;
+      for (final item in result) {
+        if (item is! Map) continue;
+        final n = AndroidNotification(
+          package: (item['package'] as String?) ?? '',
+          title: (item['title'] as String?) ?? '',
+          text: (item['text'] as String?) ?? '',
+          category: (item['category'] as String?) ?? '',
+        );
+        if (n.title.isEmpty && n.text.isEmpty) continue;
+        if (n.package == 'com.smartcatch.smartcatch_app') continue;
+        debugPrint(
+            'NotifHandler: received pkg=${n.package} title=${n.title}');
+        _notifController.add(n);
+      }
+    } catch (e) {
+      debugPrint('NotifHandler: poll error: $e');
+    }
   }
 
   String formatForWatch(AndroidNotification n) {
-    final t = classify(n);
-    switch (t) {
-      case NotifType.call:
-        return n.title.isNotEmpty ? n.title : n.text;
-      case NotifType.chat:
-      case NotifType.email:
-      case NotifType.other:
-        return n.text;
+    final text = n.text;
+    if (n.package == 'com.android.dialer' ||
+        n.package == 'com.android.incallui' ||
+        n.package == 'com.google.android.dialer') {
+      return n.title.isNotEmpty ? n.title : text;
     }
+    return text;
   }
 
   @override

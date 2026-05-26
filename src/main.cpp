@@ -104,7 +104,7 @@ void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
                 if (screen == SCR_HOME || screen == SCR_OFF) {
                     notifViewIdx = notifHead;
                     screen = SCR_NOTIFICATION;
-                    timeout = millis() + 7000;
+                    timeout = millis() + 3000;
                 }
             }
             break;

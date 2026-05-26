@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import '../ble/watch_service.dart';
 import '../ble/watch_constants.dart';
 import '../models/watch_data.dart';
@@ -15,11 +14,16 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   String _lastNotifTitle = '';
   String _lastNotifText = '';
+  bool _notifPerm = false;
 
   @override
   void initState() {
     super.initState();
     final svc = context.read<WatchService>();
+
+    svc.notifHandler.hasPermission().then((p) {
+      if (mounted) setState(() => _notifPerm = p);
+    });
 
     svc.notifHandler.onNotification.listen((n) {
       if (mounted) {
@@ -27,6 +31,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _lastNotifTitle = n.title;
           _lastNotifText = n.text;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Notif: ${n.title}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     });
   }
@@ -72,6 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _NotifStatusCard(
                   listening: service.notifHandler.isListening,
+                  hasPermission: _notifPerm,
                   lastTitle: _lastNotifTitle,
                   lastText: _lastNotifText,
                 ),
@@ -83,6 +94,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _StepsCard(state: state),
                 const SizedBox(height: 12),
                 _CommandsCard(service: service),
+                const SizedBox(height: 12),
+                _NotifDebugCard(debug: service.notifDebug),
               ],
             ),
           ),
@@ -94,11 +107,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 class _NotifStatusCard extends StatelessWidget {
   final bool listening;
+  final bool hasPermission;
   final String lastTitle;
   final String lastText;
 
   const _NotifStatusCard({
     required this.listening,
+    required this.hasPermission,
     required this.lastTitle,
     required this.lastText,
   });
@@ -106,6 +121,9 @@ class _NotifStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final active = listening && hasPermission;
+    final color = active ? Colors.green : (listening ? Colors.orange : Colors.red);
+    final label = active ? 'Activo' : (listening ? 'Sin permiso' : 'Inactivo');
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -115,19 +133,16 @@ class _NotifStatusCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  listening ? Icons.notifications_active : Icons.notifications_off,
-                  color: listening ? Colors.green : Colors.red,
+                  active ? Icons.notifications_active : Icons.notifications_off,
+                  color: color,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text('Notificaciones', style: theme.textTheme.titleMedium),
                 const Spacer(),
                 Text(
-                  listening ? 'Activo' : 'Inactivo',
-                  style: TextStyle(
-                    color: listening ? Colors.green : Colors.red,
-                    fontSize: 12,
-                  ),
+                  label,
+                  style: TextStyle(color: color, fontSize: 12),
                 ),
               ],
             ),
@@ -140,14 +155,14 @@ class _NotifStatusCard extends StatelessWidget {
               if (lastText.isNotEmpty)
                 Text(lastText, style: theme.textTheme.bodySmall),
             ],
-            if (!listening) ...[
+            if (!active) ...[
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => NotificationsListener.openPermissionSettings(),
+                  onPressed: () => _openSettings(context),
                   icon: const Icon(Icons.settings, size: 16),
-                  label: const Text('Abrir ajustes notificaciones'),
+                  label: Text(listening ? 'Conceder permiso' : 'Abrir ajustes notificaciones'),
                 ),
               ),
             ],
@@ -155,6 +170,10 @@ class _NotifStatusCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _openSettings(BuildContext context) {
+    context.read<WatchService>().notifHandler.openSettings();
   }
 }
 
@@ -278,13 +297,6 @@ class _CommandsCard extends StatelessWidget {
                     const SnackBar(content: Text('Test notification sent'), duration: Duration(seconds: 1)),
                   );
                 }),
-                _cmdBtn('Test raw', Icons.warning, () {
-                  final data = buildSendNotification('RAW TEST', 'Mensaje directo');
-                  service.sendCommand(cmdSendNotification, data.sublist(1));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Raw command sent'), duration: Duration(seconds: 1)),
-                  );
-                }),
               ],
             ),
           ],
@@ -306,6 +318,95 @@ class _CommandsCard extends StatelessWidget {
     service.showTime(now.hour, now.minute, now.second);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Hora enviada: ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}')),
+    );
+  }
+}
+
+class _NotifDebugCard extends StatelessWidget {
+  final NotificationDebugInfo? debug;
+
+  const _NotifDebugCard({required this.debug});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (debug == null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              const Icon(Icons.bug_report, size: 20, color: Colors.grey),
+              const SizedBox(width: 8),
+              Text('Notificaciones debug', style: theme.textTheme.titleSmall),
+              const Spacer(),
+              Text('Esperando...', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final statusColor = debug!.status == 'enviado'
+        ? Colors.green
+        : debug!.status == 'error'
+            ? Colors.red
+            : Colors.orange;
+    final statusIcon = debug!.status == 'enviado'
+        ? Icons.check_circle
+        : debug!.status == 'error'
+            ? Icons.error
+            : Icons.hourglass_top;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.bug_report, size: 20, color: Colors.cyan),
+                const SizedBox(width: 8),
+                Text('Notificación debug', style: theme.textTheme.titleSmall),
+                const Spacer(),
+                Icon(statusIcon, size: 18, color: statusColor),
+                const SizedBox(width: 4),
+                Text(debug!.status, style: TextStyle(color: statusColor, fontSize: 12)),
+              ],
+            ),
+            const Divider(height: 12),
+            _debugRow('App', debug!.appName),
+            _debugRow('Preview', debug!.preview),
+            _debugRow('Package', debug!.package),
+            _debugRow('Título orig', debug!.originalTitle),
+            _debugRow('Texto orig', debug!.originalText),
+            _debugRow('Hora', '${debug!.timestamp.hour}:${debug!.timestamp.minute}:${debug!.timestamp.second}'),
+            if (debug!.error != null) ...[
+              const SizedBox(height: 4),
+              Text('Error: ${debug!.error}', style: TextStyle(color: Colors.red, fontSize: 11)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _debugRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+          ),
+        ],
+      ),
     );
   }
 }

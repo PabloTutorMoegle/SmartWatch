@@ -146,7 +146,7 @@ void Display::btStatus(const char* msg) {
 
 void Display::showHomeWithNotif(uint8_t h, uint8_t m, uint8_t s, bool showColon, float temp, uint32_t steps, uint8_t count) {
     showHome(h, m, s, showColon, temp, steps);
-    oled->fillCircle(SCREEN_WIDTH - 4, 4, 2, SSD1306_WHITE);
+    oled->fillCircle(SCREEN_WIDTH - 4, 18, 2, SSD1306_WHITE);
     oled->display();
 }
 
