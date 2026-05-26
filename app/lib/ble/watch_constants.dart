@@ -14,6 +14,22 @@ const cmdScreenOff = 0x03;
 const cmdVibrate = 0x04;
 const cmdShowSteps = 0x05;
 const cmdResetSteps = 0x06;
+const cmdSendNotification = 0x0B;
+const cmdClearNotifications = 0x0C;
+
+List<int> buildSendNotification(String title, String text) {
+  final titleBytes = List<int>.from(title.codeUnits);
+  final textBytes = List<int>.from(text.codeUnits);
+  final tlen = titleBytes.length > 19 ? 19 : titleBytes.length;
+  final mlen = textBytes.length > 49 ? 49 : textBytes.length;
+  return [
+    cmdSendNotification,
+    tlen,
+    ...titleBytes.sublist(0, tlen),
+    mlen,
+    ...textBytes.sublist(0, mlen),
+  ];
+}
 
 List<int> buildCommand(int cmd, [List<int>? data]) {
   final bytes = <int>[cmd];

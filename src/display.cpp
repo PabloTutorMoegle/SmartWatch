@@ -144,6 +144,48 @@ void Display::btStatus(const char* msg) {
     oled->display();
 }
 
+void Display::showHomeWithNotif(uint8_t h, uint8_t m, uint8_t s, bool showColon, float temp, uint32_t steps, uint8_t count) {
+    showHome(h, m, s, showColon, temp, steps);
+    oled->fillCircle(SCREEN_WIDTH - 4, 4, 2, SSD1306_WHITE);
+    oled->display();
+}
+
+void Display::showNotification(const char* title, const char* msg, uint8_t remaining) {
+    oled->clearDisplay();
+    oled->setTextSize(1);
+    oled->setTextColor(SSD1306_WHITE);
+
+    oled->setCursor(0, 0);
+    oled->print(title);
+    oled->drawFastHLine(0, 10, SCREEN_WIDTH, SSD1306_WHITE);
+
+    int msglen = strlen(msg);
+    int maxChars = (SCREEN_WIDTH / 6);
+    if (msglen > maxChars) {
+        char buf[22];
+        memcpy(buf, msg, maxChars - 3);
+        buf[maxChars - 3] = '.';
+        buf[maxChars - 2] = '.';
+        buf[maxChars - 1] = '.';
+        buf[maxChars] = '\0';
+        oled->setCursor(0, 16);
+        oled->print(buf);
+    } else {
+        oled->setCursor(0, 16);
+        oled->print(msg);
+    }
+
+    char footer[16];
+    snprintf(footer, sizeof(footer), "%d/%d", remaining, NOTIF_QUEUE_MAX);
+    int16_t x1, y1;
+    uint16_t w, ht;
+    oled->getTextBounds(footer, 0, 0, &x1, &y1, &w, &ht);
+    oled->setCursor(SCREEN_WIDTH - w - 1, SCREEN_HEIGHT - 10);
+    oled->print(footer);
+
+    oled->display();
+}
+
 void Display::clear() {
     oled->clearDisplay();
     oled->display();

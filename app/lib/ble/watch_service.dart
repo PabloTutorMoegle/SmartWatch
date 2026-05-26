@@ -6,12 +6,16 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/watch_data.dart';
 import '../services/background_service.dart';
+import '../services/notification_handler.dart';
 import 'watch_constants.dart';
 
 class WatchService extends ChangeNotifier {
   final WatchState _state = WatchState();
   WatchState get state => _state;
   bool get isConnected => _state.connected;
+
+  final NotificationHandler notifHandler = NotificationHandler();
+  StreamSubscription<AndroidNotification>? _notifSub;
 
   StreamSubscription<Map<String, dynamic>?>? _serviceSub;
   bool _initialized = false;
@@ -48,17 +52,55 @@ class WatchService extends ChangeNotifier {
     }
   }
 
+  void _onConnectionChanged(bool connected) {
+    if (connected) {
+      _startNotificationForwarding();
+    } else {
+      _stopNotificationForwarding();
+    }
+  }
+
+  void _startNotificationForwarding() {
+    debugPrint('WatchService: starting notification forwarding');
+    notifHandler.startListening();
+    _notifSub?.cancel();
+    _notifSub = notifHandler.onNotification.listen((n) {
+      final title = n.title;
+      final text = notifHandler.formatForWatch(n);
+      debugPrint('WatchService: forwarding notif title="$title" text="$text"');
+      if (title.isEmpty && text.isEmpty) return;
+      try {
+        FlutterBackgroundService().invoke('data', {
+          'action': 'send_notification',
+          'title': title,
+          'text': text,
+        });
+      } catch (_) {}
+    });
+  }
+
+  void _stopNotificationForwarding() {
+    debugPrint('WatchService: stopping notification forwarding');
+    _notifSub?.cancel();
+    _notifSub = null;
+    notifHandler.stopListening();
+  }
+
   void _onServiceData(Map<String, dynamic>? data) {
     if (data == null) return;
     try {
       switch (data['type'] as String) {
         case 'connection':
+          final wasConnected = _state.connected;
           _state.loading = false;
           _state.connected = data['connected'] == true;
           _state.deviceName = (data['name'] as String?) ?? '';
           _state.reconnecting = false;
           if (data['error'] != null) {
             _state.lastError = data['error'] as String?;
+          }
+          if (_state.connected != wasConnected) {
+            _onConnectionChanged(_state.connected);
           }
           notifyListeners();
         case 'imu_data':
@@ -220,6 +262,22 @@ class WatchService extends ChangeNotifier {
     }
   }
 
+  Future<void> sendTestNotification() async {
+    try {
+      FlutterBackgroundService().invoke('data', {
+        'action': 'send_notification',
+        'title': 'SmartCatch TEST',
+        'text': 'Notificación de prueba desde la app',
+      });
+    } catch (_) {}
+  }
+
+  Future<void> clearNotifications() async {
+    try {
+      FlutterBackgroundService().invoke('data', {'action': 'clear_notifications'});
+    } catch (_) {}
+  }
+
   Future<void> showImu() async => sendCommand(cmdShowImu);
   Future<void> showSteps() async => sendCommand(cmdShowSteps);
   Future<void> screenOff() async => sendCommand(cmdScreenOff);
@@ -227,6 +285,8 @@ class WatchService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _notifSub?.cancel();
+    notifHandler.dispose();
     _serviceSub?.cancel();
     super.dispose();
   }

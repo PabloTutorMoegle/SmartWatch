@@ -62,6 +62,13 @@ class BleBackgroundManager {
           msg['m'] as int,
           msg['s'] as int,
         );
+      case 'send_notification':
+        _handleSendNotification(
+          msg['title'] as String,
+          msg['text'] as String,
+        );
+      case 'clear_notifications':
+        _handleClearNotifications();
     }
   }
 
@@ -296,6 +303,21 @@ class BleBackgroundManager {
 
   Future<void> _handleShowTime(int h, int m, int s) async {
     await _charCommand?.write(buildTimeCommand(h, m, s), withoutResponse: true);
+  }
+
+  Future<void> _handleSendNotification(String title, String text) async {
+    final data = buildSendNotification(title, text);
+    print('[BleBg] writing notif cmd len=${data.length} charCommand=${_charCommand != null}');
+    if (_charCommand == null) {
+      print('[BleBg] charCommand is null, cannot send notification');
+      return;
+    }
+    await _charCommand!.write(data, withoutResponse: true);
+  }
+
+  Future<void> _handleClearNotifications() async {
+    print('[BleBg] clearing notifications charCommand=${_charCommand != null}');
+    await _charCommand?.write([cmdClearNotifications], withoutResponse: true);
   }
 
   void _tryAutoConnect() {
