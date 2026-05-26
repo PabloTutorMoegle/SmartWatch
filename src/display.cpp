@@ -150,6 +150,40 @@ void Display::showHomeWithNotif(uint8_t h, uint8_t m, uint8_t s, bool showColon,
     oled->display();
 }
 
+void Display::showMenu(uint8_t cursor, bool hasNotif) {
+    oled->clearDisplay();
+    oled->setTextSize(1);
+    oled->setTextColor(SSD1306_WHITE);
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "MENU");
+    int16_t x1, y1;
+    uint16_t w, ht;
+    oled->getTextBounds(buf, 0, 0, &x1, &y1, &w, &ht);
+    oled->setCursor((SCREEN_WIDTH - w) / 2, 0);
+    oled->println(buf);
+    oled->drawFastHLine(0, 10, SCREEN_WIDTH, SSD1306_WHITE);
+
+    const char* items[5] = {"Home", "IMU", "Steps", "Time", "Notif."};
+    for (int i = 0; i < 5; i++) {
+        int y = 16 + i * 10;
+        if (i == cursor) {
+            oled->setCursor(4, y);
+            oled->print(">");
+            oled->setCursor(20, y);
+        } else {
+            oled->setCursor(20, y);
+        }
+        oled->print(items[i]);
+    }
+
+    if (hasNotif) {
+        oled->fillCircle(SCREEN_WIDTH - 4, 18, 2, SSD1306_WHITE);
+    }
+
+    oled->display();
+}
+
 void Display::showNotification(const char* title, const char* msg, uint8_t remaining) {
     oled->clearDisplay();
     oled->setTextSize(1);

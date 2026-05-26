@@ -33,6 +33,9 @@
 #define VIBRATE_PIN 2
 #define VIBRATE_MS 200
 
+#define BTN_HOLD_MS 400
+//#define BTN2_PIN 4
+
 #define NOTIF_QUEUE_MAX 5
 #define NOTIF_TITLE_MAX 20
 #define NOTIF_MSG_MAX   50
