@@ -62,6 +62,13 @@ class BleBackgroundManager {
           msg['m'] as int,
           msg['s'] as int,
         );
+      case 'send_notification':
+        _handleSendNotification(
+          msg['title'] as String,
+          msg['text'] as String,
+        );
+      case 'clear_notifications':
+        _handleClearNotifications();
     }
   }
 
@@ -139,6 +146,7 @@ class BleBackgroundManager {
     _connSub = device.connectionState.listen(_onConnectionStateChanged);
 
     await device.connect();
+    print('[BleBg] connected MTU=${device.mtuNow}');
     await _discoverServices(device);
     _device = device;
 
@@ -296,6 +304,30 @@ class BleBackgroundManager {
 
   Future<void> _handleShowTime(int h, int m, int s) async {
     await _charCommand?.write(buildTimeCommand(h, m, s), withoutResponse: true);
+  }
+
+  Future<void> _handleSendNotification(String title, String text) async {
+    try {
+      final data = buildSendNotification(title, text);
+      print('[BleBg] writing notif cmd len=${data.length} charCommand=${_charCommand != null}');
+      if (_charCommand == null) {
+        print('[BleBg] charCommand is null, cannot send notification');
+        onInvoke({'type': 'notif_send_result', 'success': false, 'error': 'charCommand null'});
+        return;
+      }
+      print('[BleBg] sending: ${data.map((e) => e.toRadixString(16).padLeft(2, '0')).join(" ")}');
+      await _charCommand!.write(data, withoutResponse: false);
+      print('[BleBg] write completed successfully');
+      onInvoke({'type': 'notif_send_result', 'success': true});
+    } catch (e) {
+      print('[BleBg] send notification error: $e');
+      onInvoke({'type': 'notif_send_result', 'success': false, 'error': e.toString()});
+    }
+  }
+
+  Future<void> _handleClearNotifications() async {
+    print('[BleBg] clearing notifications charCommand=${_charCommand != null}');
+    await _charCommand?.write([cmdClearNotifications], withoutResponse: true);
   }
 
   void _tryAutoConnect() {

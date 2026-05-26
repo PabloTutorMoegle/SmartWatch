@@ -6,15 +6,44 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/watch_data.dart';
 import '../services/background_service.dart';
+import '../services/notification_handler.dart';
 import 'watch_constants.dart';
+
+class NotificationDebugInfo {
+  final String package;
+  final String originalTitle;
+  final String originalText;
+  final String appName;
+  final String preview;
+  final DateTime timestamp;
+  final String status; // 'enviando', 'enviado', 'error'
+  final String? error;
+
+  NotificationDebugInfo({
+    required this.package,
+    required this.originalTitle,
+    required this.originalText,
+    required this.appName,
+    required this.preview,
+    required this.timestamp,
+    required this.status,
+    this.error,
+  });
+}
 
 class WatchService extends ChangeNotifier {
   final WatchState _state = WatchState();
   WatchState get state => _state;
   bool get isConnected => _state.connected;
 
+  final NotificationHandler notifHandler = NotificationHandler();
+  StreamSubscription<AndroidNotification>? _notifSub;
+
   StreamSubscription<Map<String, dynamic>?>? _serviceSub;
   bool _initialized = false;
+
+  NotificationDebugInfo? _notifDebug;
+  NotificationDebugInfo? get notifDebug => _notifDebug;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -48,17 +77,98 @@ class WatchService extends ChangeNotifier {
     }
   }
 
+  void _onConnectionChanged(bool connected) {
+    if (connected) {
+      _startNotificationForwarding();
+    } else {
+      _stopNotificationForwarding();
+    }
+  }
+
+  String _appNameFromPackage(String package) {
+    final known = <String, String>{
+      'com.whatsapp': 'WhatsApp',
+      'com.google.android.gm': 'Gmail',
+      'com.google.android.apps.messaging': 'Messages',
+      'com.android.dialer': 'Phone',
+      'com.google.android.dialer': 'Phone',
+      'com.android.incallui': 'Phone',
+      'com.google.android.youtube': 'YouTube',
+      'com.spotify.music': 'Spotify',
+      'com.twitter.android': 'X',
+      'com.facebook.katana': 'Facebook',
+      'com.instagram.android': 'Instagram',
+      'com.slack': 'Slack',
+      'com.microsoft.teams': 'Teams',
+      'com.android.systemui': 'System',
+    };
+    return known[package] ?? package.split('.').last;
+  }
+
+  void _startNotificationForwarding() {
+    debugPrint('WatchService: starting notification forwarding');
+    notifHandler.startListening();
+    _notifSub?.cancel();
+    _notifSub = notifHandler.onNotification.listen((n) {
+      final appName = _appNameFromPackage(n.package);
+      final text = notifHandler.formatForWatch(n);
+      final preview = text.length > 15 ? text.substring(0, 15) : text;
+      if (appName.isEmpty && preview.isEmpty) return;
+      _notifDebug = NotificationDebugInfo(
+        package: n.package,
+        originalTitle: n.title,
+        originalText: n.text,
+        appName: appName,
+        preview: preview,
+        timestamp: DateTime.now(),
+        status: 'enviando',
+      );
+      notifyListeners();
+      debugPrint('WatchService: forwarding app="$appName" preview="$preview"');
+      try {
+        FlutterBackgroundService().invoke('data', {
+          'action': 'send_notification',
+          'title': appName,
+          'text': preview,
+        });
+      } catch (e) {
+        _notifDebug = NotificationDebugInfo(
+          package: n.package,
+          originalTitle: n.title,
+          originalText: n.text,
+          appName: appName,
+          preview: preview,
+          timestamp: DateTime.now(),
+          status: 'error',
+          error: 'invoke failed: $e',
+        );
+        notifyListeners();
+      }
+    });
+  }
+
+  void _stopNotificationForwarding() {
+    debugPrint('WatchService: stopping notification forwarding');
+    _notifSub?.cancel();
+    _notifSub = null;
+    notifHandler.stopListening();
+  }
+
   void _onServiceData(Map<String, dynamic>? data) {
     if (data == null) return;
     try {
       switch (data['type'] as String) {
         case 'connection':
+          final wasConnected = _state.connected;
           _state.loading = false;
           _state.connected = data['connected'] == true;
           _state.deviceName = (data['name'] as String?) ?? '';
           _state.reconnecting = false;
           if (data['error'] != null) {
             _state.lastError = data['error'] as String?;
+          }
+          if (_state.connected != wasConnected) {
+            _onConnectionChanged(_state.connected);
           }
           notifyListeners();
         case 'imu_data':
@@ -83,6 +193,20 @@ class WatchService extends ChangeNotifier {
           _state.reconnecting = true;
           _state.reconnectAttempt = data['attempt'] as int? ?? 0;
           notifyListeners();
+        case 'notif_send_result':
+          if (_notifDebug != null) {
+            _notifDebug = NotificationDebugInfo(
+              package: _notifDebug!.package,
+              originalTitle: _notifDebug!.originalTitle,
+              originalText: _notifDebug!.originalText,
+              appName: _notifDebug!.appName,
+              preview: _notifDebug!.preview,
+              timestamp: _notifDebug!.timestamp,
+              status: (data['success'] == true) ? 'enviado' : 'error',
+              error: data['error'] as String?,
+            );
+            notifyListeners();
+          }
       }
     } catch (e) {
       debugPrint('Error parsing service data: $e');
@@ -220,6 +344,22 @@ class WatchService extends ChangeNotifier {
     }
   }
 
+  Future<void> sendTestNotification() async {
+    try {
+      FlutterBackgroundService().invoke('data', {
+        'action': 'send_notification',
+        'title': 'SmartCatch TEST',
+        'text': 'Notificación de prueba desde la app',
+      });
+    } catch (_) {}
+  }
+
+  Future<void> clearNotifications() async {
+    try {
+      FlutterBackgroundService().invoke('data', {'action': 'clear_notifications'});
+    } catch (_) {}
+  }
+
   Future<void> showImu() async => sendCommand(cmdShowImu);
   Future<void> showSteps() async => sendCommand(cmdShowSteps);
   Future<void> screenOff() async => sendCommand(cmdScreenOff);
@@ -227,6 +367,8 @@ class WatchService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _notifSub?.cancel();
+    notifHandler.dispose();
     _serviceSub?.cancel();
     super.dispose();
   }

@@ -49,87 +49,167 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('SmartCatch')),
-      body: Center(
-        child: _scanning
-            ? const Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Escaneando…'),
-                ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _NotifPermissionCard(),
+            const SizedBox(height: 16),
+            if (_scanning)
+              const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Escaneando…'),
+                  ],
+                ),
               )
-            : _error != null
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error, color: Colors.red, size: 48),
-                      const SizedBox(height: 12),
-                      Text(_error!, textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.red)),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _startScan,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Reintentar'),
+            else if (_error != null)
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error, color: Colors.red, size: 48),
+                    const SizedBox(height: 12),
+                    Text(_error!, textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _startScan,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
+              )
+            else if (!_scanned)
+              Center(
+                child: FilledButton.icon(
+                  onPressed: _startScan,
+                  icon: const Icon(Icons.bluetooth_searching),
+                  label: const Text('Escanear'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    textStyle: const TextStyle(fontSize: 18),
+                  ),
+                ),
+              )
+            else if (_devices.isEmpty)
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('No se encontraron dispositivos'),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _startScan,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Escanear de nuevo'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _devices.length + 1,
+                itemBuilder: (_, i) {
+                  if (i == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: Row(
+                        children: [
+                          Text('${_devices.length} dispositivo(s)',
+                              style: theme.textTheme.bodySmall),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: _startScan,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Escanear de nuevo'),
+                          ),
+                        ],
                       ),
-                    ],
-                  )
-                : !_scanned
-                    ? FilledButton.icon(
-                        onPressed: _startScan,
-                        icon: const Icon(Icons.bluetooth_searching),
-                        label: const Text('Escanear'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                          textStyle: const TextStyle(fontSize: 18),
-                        ),
-                      )
-                    : _devices.isEmpty
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('No se encontraron dispositivos'),
-                              const SizedBox(height: 12),
-                              FilledButton.icon(
-                                onPressed: _startScan,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Escanear de nuevo'),
-                              ),
-                            ],
-                          )
-                        : ListView.builder(
-                            itemCount: _devices.length + 1,
-                            itemBuilder: (_, i) {
-                              if (i == 0) {
-                                return Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                                  child: Row(
-                                    children: [
-                                      Text('${_devices.length} dispositivo(s)',
-                                          style: theme.textTheme.bodySmall),
-                                      const Spacer(),
-                                      TextButton.icon(
-                                        onPressed: _startScan,
-                                        icon: const Icon(Icons.refresh, size: 18),
-                                        label: const Text('Escanear de nuevo'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-                              final d = _devices[i - 1];
-                              final name = d['name'] as String;
-                              final rssi = d['rssi'] as int;
-                              return ListTile(
-                                leading: const Icon(Icons.watch),
-                                title: Text(name),
-                                subtitle: Text('$rssi dBm'),
-                                trailing: Icon(_rssiIcon(rssi)),
-                                onTap: () => _connect(d),
-                              );
-                            },
-                      ),
+                    );
+                  }
+                  final d = _devices[i - 1];
+                  final name = d['name'] as String;
+                  final rssi = d['rssi'] as int;
+                  return ListTile(
+                    leading: const Icon(Icons.watch),
+                    title: Text(name),
+                    subtitle: Text('$rssi dBm'),
+                    trailing: Icon(_rssiIcon(rssi)),
+                    onTap: () => _connect(d),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotifPermissionCard extends StatefulWidget {
+  @override
+  State<_NotifPermissionCard> createState() => _NotifPermissionCardState();
+}
+
+class _NotifPermissionCardState extends State<_NotifPermissionCard> {
+  bool? _hasPermission;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final svc = context.read<WatchService>();
+    final result = await svc.notifHandler.hasPermission();
+    if (mounted) setState(() => _hasPermission = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasPermission == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+        ),
+      );
+    }
+
+    if (_hasPermission!) return const SizedBox.shrink();
+
+    return Card(
+      color: Colors.orange.shade900,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.notifications_off, color: Colors.white),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Permiso de notificaciones requerido',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                final svc = context.read<WatchService>();
+                await svc.notifHandler.openSettings();
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              child: const Text('Abrir ajustes'),
+            ),
+          ],
+        ),
       ),
     );
   }
