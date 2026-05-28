@@ -12,9 +12,12 @@ SmartWatchBLE ble;
 
 enum Screen { SCR_OFF, SCR_HOME, SCR_MENU, SCR_IMU, SCR_STEPS, SCR_TIME, SCR_NOTIFICATION };
 Screen screen = SCR_HOME;
+Screen lastLoggedScreen = SCR_OFF;
 
 int lastBtn = HIGH;
+int debouncedBtn = HIGH;
 unsigned long btnPressTime = 0;
+unsigned long lastDebounceTime = 0;
 unsigned long timeout = 0;
 unsigned long lastBleNotify = 0;
 unsigned long lastScreenUpdate = 0;
@@ -24,6 +27,7 @@ uint8_t hours = 0, minutes = 0, seconds = 0;
 unsigned long lastTimeTick = 0;
 
 bool lastWakeState = false;
+bool displayAwake = true;
 
 uint8_t menuCursor = 0;
 #define MENU_ITEMS 5
@@ -124,12 +128,14 @@ void onCommand(uint8_t cmd, uint8_t* data, size_t len) {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("SmartWatch v0.3 Menu");
+    Serial.println("SmartWatch v0.3 Starting...");
+    Serial.print("BUTTON_PIN=");
+    Serial.println(BUTTON_PIN);
 
     Wire.begin(I2C_SDA, I2C_SCL);
 
     if (!display.begin()) {
-        Serial.println("SSD1306 no encontrado");
+        Serial.println("GC9A01A no encontrado");
         while (true) delay(10);
     }
 
@@ -164,80 +170,64 @@ void loop() {
         mpu.read();
     }
 
-    int btn = digitalRead(BUTTON_PIN);
+    int reading = digitalRead(BUTTON_PIN);
 
-    if (lastBtn == HIGH && btn == LOW) {
-        btnPressTime = now;
+    if (reading != lastBtn) {
+        lastDebounceTime = now;
     }
 
-    if (lastBtn == LOW && btn == HIGH) {
-        unsigned long held = now - btnPressTime;
+    if ((now - lastDebounceTime) > 50) {
+        if (reading != debouncedBtn) {
+            debouncedBtn = reading;
 
-        timeout = millis() + 7000;
+            if (debouncedBtn == LOW) {
+                Serial.print("PRESS screen=");
+                Serial.println(screen);
+                timeout = millis() + 7000;
 
-        if (held >= BTN_HOLD_MS) {
-            switch (screen) {
-                case SCR_OFF:
-                    screen = SCR_HOME;
-                    break;
-                case SCR_HOME:
-                    screen = SCR_OFF;
-                    break;
-                case SCR_MENU:
-                    switch (menuCursor) {
-                        case 0: screen = SCR_HOME; break;
-                        case 1: screen = SCR_IMU; break;
-                        case 2: screen = SCR_STEPS; break;
-                        case 3: screen = SCR_TIME; break;
-                        case 4:
-                            if (notifCount > 0) {
-                                notifViewIdx = notifHead;
-                                screen = SCR_NOTIFICATION;
-                            }
-                            break;
-                    }
-                    break;
-                case SCR_IMU:
-                case SCR_STEPS:
-                case SCR_TIME:
-                    screen = SCR_HOME;
-                    break;
-                case SCR_NOTIFICATION:
-                    screen = SCR_MENU;
-                    break;
-            }
-        } else {
-            switch (screen) {
-                case SCR_OFF:
-                    screen = SCR_HOME;
-                    break;
-                case SCR_HOME:
-                    menuCursor = 0;
-                    screen = SCR_MENU;
-                    break;
-                case SCR_MENU:
-                    menuCursor = (menuCursor + 1) % MENU_ITEMS;
-                    break;
-                case SCR_IMU:
-                case SCR_STEPS:
-                case SCR_TIME:
-                    screen = SCR_MENU;
-                    break;
-                case SCR_NOTIFICATION:
-                    if (notifCount > 1) {
-                        notifHead = (notifHead + 1) % NOTIF_QUEUE_MAX;
-                        notifCount--;
-                        notifViewIdx = notifHead;
-                    } else {
-                        clearNotifications();
+                switch (screen) {
+                    case SCR_OFF:
+                        screen = SCR_HOME;
+                        break;
+                    case SCR_HOME:
+                        menuCursor = (menuCursor + 1) % MENU_ITEMS;
                         screen = SCR_MENU;
-                    }
-                    break;
+                        break;
+                    case SCR_MENU:
+                        switch (menuCursor) {
+                            case 0: screen = SCR_HOME; break;
+                            case 1: screen = SCR_IMU; break;
+                            case 2: screen = SCR_STEPS; break;
+                            case 3: screen = SCR_TIME; break;
+                            case 4:
+                                if (notifCount > 0) {
+                                    notifViewIdx = notifHead;
+                                    screen = SCR_NOTIFICATION;
+                                }
+                                break;
+                        }
+                        break;
+                    case SCR_IMU:
+                    case SCR_STEPS:
+                    case SCR_TIME:
+                        screen = SCR_HOME;
+                        break;
+                    case SCR_NOTIFICATION:
+                        if (notifCount > 1) {
+                            notifHead = (notifHead + 1) % NOTIF_QUEUE_MAX;
+                            notifCount--;
+                            notifViewIdx = notifHead;
+                        } else {
+                            clearNotifications();
+                            screen = SCR_MENU;
+                        }
+                        break;
+                }
             }
         }
     }
 
-    lastBtn = btn;
+    lastBtn = reading;
 
     if (ble.connected()) {
         if (now - lastBleNotify >= 500) {
@@ -264,45 +254,63 @@ void loop() {
     if (now - lastScreenUpdate >= 200) {
         lastScreenUpdate = now;
 
-        if (screen == SCR_HOME) {
-            if (notifCount > 0) {
-                display.showHomeWithNotif(hours, minutes, seconds, seconds % 2 == 0, mpu.celsius, mpu.getStepCount(), notifCount);
-            } else {
-                display.showHome(hours, minutes, seconds, seconds % 2 == 0, mpu.celsius, mpu.getStepCount());
-            }
-        }
-
-        if (screen == SCR_MENU) {
-            display.showMenu(menuCursor, notifCount > 0);
-        }
-
-        if (screen == SCR_IMU) {
-            display.imuData(mpu.ax_g, mpu.ay_g, mpu.az_g, mpu.celsius);
-        }
-
-        if (screen == SCR_STEPS) {
-            display.showSteps(mpu.getStepCount());
-        }
-
-        if (screen == SCR_TIME) {
-            display.showTime(hours, minutes, seconds, seconds % 2 == 0);
-        }
-
-        if (screen == SCR_NOTIFICATION) {
-            if (notifCount > 0) {
-                Notification* n = &notifQueue[notifViewIdx];
-                display.showNotification(n->title, n->msg, notifCount);
-            } else {
-                screen = SCR_MENU;
-            }
+        if (screen != lastLoggedScreen) {
+            lastLoggedScreen = screen;
+            Serial.print("SCR=");
+            Serial.println(screen);
+            display.screenChanged();
         }
 
         if (screen == SCR_OFF) {
-            display.clear();
-        }
+            if (displayAwake) {
+                display.off();
+                displayAwake = false;
+            }
+        } else {
+            if (!displayAwake) {
+                display.on();
+                displayAwake = true;
+            }
 
-        if (screen != SCR_OFF && now >= timeout) {
-            screen = SCR_OFF;
+            Serial.print("RENDER screen=");
+        Serial.println(screen);
+
+        if (screen == SCR_HOME) {
+                if (notifCount > 0) {
+                    display.showHomeWithNotif(hours, minutes, seconds % 2 == 0, notifCount);
+                } else {
+                    display.showHome(hours, minutes, seconds % 2 == 0);
+                }
+            }
+
+            if (screen == SCR_MENU) {
+                display.showMenu(menuCursor, notifCount > 0);
+            }
+
+            if (screen == SCR_IMU) {
+                display.imuData(mpu.ax_g, mpu.ay_g, mpu.az_g, mpu.celsius);
+            }
+
+            if (screen == SCR_STEPS) {
+                display.showSteps(mpu.getStepCount());
+            }
+
+            if (screen == SCR_TIME) {
+                display.showTime(hours, minutes, seconds, seconds % 2 == 0);
+            }
+
+            if (screen == SCR_NOTIFICATION) {
+                if (notifCount > 0) {
+                    Notification* n = &notifQueue[notifViewIdx];
+                    display.showNotification(n->title, n->msg, notifCount);
+                } else {
+                    screen = SCR_MENU;
+                }
+            }
+
+            if (now >= timeout) {
+                screen = SCR_OFF;
+            }
         }
     }
 

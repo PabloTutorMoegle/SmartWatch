@@ -1,60 +1,73 @@
 # SmartWatch
 
-Reloj inteligente con ESP32, acelerómetro MPU6050 y display OLED SSD1306.
+Reloj inteligente con ESP32, acelerómetro MPU6050 y pantalla redonda GC9A01A (1.28", 240x240, 65K colores).
 
 ## Hardware
 
-| Componente | Pin I2C (ESP32) |
-|-----------|-----------------|
-| SSD1306 OLED | SDA=GPIO21, SCL=GPIO22 |
-| MPU6050     | SDA=GPIO21, SCL=GPIO22 |
-
-Ambos dispositivos comparten el bus I2C. Alimentación: 3.3V y GND.
+| Componente | Interface | Pines (ESP32) |
+|------------|-----------|----------------|
+| GC9A01A TFT (round) | SPI | CS=GPIO5, DC=GPIO19, RST=GPIO4, MOSI=GPIO23, SCK=GPIO18, BL=3.3V |
+| MPU6050 | I2C | SDA=GPIO21, SCL=GPIO22 |
+| Botón | GPIO | GPIO15 (INPUT_PULLUP) |
+| Motor vibración | GPIO | GPIO2 |
 
 ## Esquema de conexión
 
 ```
-ESP32           SSD1306    MPU6050  Button
-GPIO21 (SDA) ── SDA ────── SDA
-GPIO22 (SCL) ── SCL ────── SCL
-GPIO23 ────────────────────────────── PIN
-3.3V ────────── VCC ────── VCC
-GND ─────────── GND ────── GND ────── GND
+ESP32               GC9A01A       MPU6050      Button     Motor
+GPIO5   (CS)  ──── CS
+GPIO19  (DC)  ──── DC
+GPIO4   (RST) ──── RST
+GPIO23  (MOSI) ──── SDA (DIN)
+GPIO18  (SCK)  ──── SCL (CLK)
+GPIO21  (SDA) ────────────────── SDA
+GPIO22  (SCL) ────────────────── SCL
+GPIO15  ──────────────────────────────────────── PIN
+GPIO2   ────────────────────────────────────────────────── VIB (+)
+3.3V    ──────── BL ──────────── VCC
+3.3V    ──────── VCC
+GND     ──────── GND ────────── GND ──────────── GND ──── GND (-)
 ```
 
 ## Dependencias
 
-- [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306)
-- [Adafruit MPU6050](https://github.com/adafruit/Adafruit_MPU6050)
+- [Adafruit GC9A01A](https://github.com/adafruit/Adafruit_GC9A01A) — driver específico para la pantalla GC9A01A
+- [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library) — librería gráfica (incluida automáticamente)
 
 Se instalan automáticamente al compilar con PlatformIO.
 
+Los pines de la pantalla se definen en `include/config.h` y se pasan directamente al constructor de la clase `Display`.
 
 ## Compilar y subir
 
 ```bash
 pio run -t upload
-pio device monitor  #ver monitor serial para ver log y prints
+pio device monitor   # Puerto serie a 115200 baud
 ```
 
-## Para setear la hora 
-(Por el momento)
-Una vez conectado el bluetooth con el telefono medieante una de las apps (yo uso LightBlue) ir a buscar la CHAR_COMMAND_UUID el codigo numerico que termina en ea07361b26ab y teniendo en cuente el tipo de escritura que use poner la hora. En mi caso uso hexadecimal asi que para poner la hora debo poner:
-```
-01 = comando CMD_SHOW_TIME (fijo)
-HH = hora en hex (0x00 a 0x17)
-MM = minuto en hex (0x00 a 0x3B)
-SS = segundo en hex (0x00 a 0x3B)
-```
-Ejemplo:
-```
-Hora	    Bytes a escribir (hex)
-14:30:00      01 0E 1E 00
-09:15:00      01 09 0F 00
-12:00:00      01 0C 00 00
-18:45:30      01 12 2D 1E
-```
-------
+## Pantallas del reloj
+
+| Pantalla     | Descripción |
+|--------------|-------------|
+| HOME         | Hora grande, temperatura y pasos |
+| MENU         | Navegación: Home, IMU, Steps, Time, Notif. |
+| IMU          | Datos del acelerómetro en tiempo real |
+| STEPS        | Contador de pasos |
+| TIME         | Hora digital grande |
+| NOTIFICATION | Notificaciones recibidas vía BLE |
+| OFF          | Pantalla apagada (ahorro de energía) |
+
+- **Auto-apagado:** 7 segundos de inactividad.
+- **Despertar:** Movimiento brusco (aceleración Z > 0.95g) o pulsar el botón.
+- **Notificaciones:** Círculo rojo indica notificaciones no leídas.
+
+## Botón
+
+| Acción | Duración | Función |
+|--------|----------|---------|
+| Pulsación corta | < 400ms | Home → Menú → siguiente ítem / avanzar notificación |
+| Pulsación larga | ≥ 400ms | Seleccionar ítem del menú / Home ↔ Off / volver |
+
 ## App companion (Android / iOS)
 
 Aplicación Flutter para controlar el reloj desde el teléfono vía BLE.
@@ -98,6 +111,23 @@ Mismo servicio/characteristics que el firmware:
 
 Comandos disponibles: `0x01` (Show Time), `0x02` (Show IMU), `0x03` (Screen Off), `0x04` (Vibrate), `0x05` (Show Steps), `0x06` (Reset Steps).
 
-------
+### Enviar hora manualmente (LightBlue)
 
-Made by PabloTutorMoegle 
+Conectar vía BLE, buscar CHAR_COMMAND_UUID (`...b26ab`) y escribir en hexadecimal:
+
+```
+01 HH MM SS
+```
+
+Ejemplos:
+
+| Hora       | Bytes (hex)   |
+|------------|---------------|
+| 14:30:00   | `01 0E 1E 00` |
+| 09:15:00   | `01 09 0F 00` |
+| 12:00:00   | `01 0C 00 00` |
+| 18:45:30   | `01 12 2D 1E` |
+
+---
+
+Made by PabloTutorMoegle

@@ -1,15 +1,23 @@
 #pragma once
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
+// GC9A01A round TFT (SPI)
+#define SCREEN_WIDTH  240
+#define SCREEN_HEIGHT 240
 
+#define TFT_CS    5
+#define TFT_DC    19
+#define TFT_RST   4
+#define TFT_MOSI  23
+#define TFT_SCLK  18
+// BL conectado directamente a 3.3V
+
+// I2C (MPU6050)
 #define I2C_SDA 21
 #define I2C_SCL 22
 
 #define MPU_ADDR 0x68
-#define OLED_ADDR 0x3C
 
-#define BUTTON_PIN 23
+#define BUTTON_PIN 15
 
 #define BLE_DEVICE_NAME "SmartWatch-Pro"
 
@@ -33,7 +41,7 @@
 #define VIBRATE_PIN 2
 #define VIBRATE_MS 200
 
-#define BTN_HOLD_MS 400
+#define BTN_HOLD_MS 1000
 //#define BTN2_PIN 4
 
 #define NOTIF_QUEUE_MAX 5
